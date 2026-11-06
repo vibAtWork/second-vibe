@@ -1,0 +1,17 @@
+{
+  "name": "ricochet-arena-p2p",
+  "version": "1.0.0",
+  "description": "Serverless peer-to-peer (WebRTC) browser multiplayer maze tank game",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node dev-server.js",
+    "test": "node --test test/*.test.js",
+    "e2e": "node test/e2e.mjs"
+  },
+  "devDependencies": {
+    "peer": "^1.0.2",
+    "peerjs": "^1.5.4"
+  },
+  "license": "MIT"
+}

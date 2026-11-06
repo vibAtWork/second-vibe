@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ricochet Arena</title>
+<style>
+  :root { --bg: #1d2128; --panel: #2a2f38; --fg: #e9ecf1; --muted: #9aa3b2; --accent: #f0b429; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; }
+  header { width: 100%; max-width: 1100px; display: flex; gap: 12px; align-items: center; padding: 10px 16px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0 12px 0 0; letter-spacing: .5px; }
+  h1 span { color: var(--accent); }
+  input, button { font: inherit; border-radius: 6px; border: 1px solid #454c58; background: var(--panel); color: var(--fg); padding: 6px 10px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #1b1b1b; border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  #status { color: var(--muted); font-size: 13px; margin-left: auto; }
+  #wrap { flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; padding: 0 16px 16px; min-height: 0; }
+  canvas { background: #f4f1ea; border-radius: 6px; max-width: 100%; max-height: 100%; aspect-ratio: 692 / 480; box-shadow: 0 6px 30px #0006; touch-action: none; }
+  #help { color: var(--muted); font-size: 13px; padding: 0 16px 12px; text-align: center; }
+  kbd { background: var(--panel); border: 1px solid #454c58; border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Ricochet <span>Arena</span> <small style="font-size:12px;color:var(--muted)">P2P</small></h1>
+  <input id="name" maxlength="16" placeholder="Your name" size="12">
+  <button id="join" class="primary">Join (Arrows + M)</button>
+  <button id="join2" title="Second player on this keyboard">+ Local player (E S D F + Q)</button>
+  <button id="join3" title="Player steered with the mouse">+ Mouse player</button>
+  <button id="copy">Copy invite link</button>
+  <span id="status">connecting…</span>
+</header>
+<div id="wrap"><canvas id="c" width="1384" height="960"></canvas></div>
+<div id="help">
+  Player 1: <kbd>↑</kbd> forward <kbd>↓</kbd> reverse <kbd>←</kbd><kbd>→</kbd> turn <kbd>M</kbd> fire ·
+  Player 2: <kbd>E</kbd> forward <kbd>D</kbd> reverse <kbd>S</kbd><kbd>F</kbd> turn <kbd>Q</kbd> fire ·
+  Mouse player: the tank drives toward the pointer, click to fire.
+  Send the invite link to friends: the first browser in a room hosts, everyone else connects to it directly.
+</div>
+<script src="vendor/peerjs.min.js"></script>
+<script type="module" src="client.js"></script>
+</body>
+</html>

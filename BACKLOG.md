@@ -1,7 +1,7 @@
 # Backlog (prioritized)
 
 1. [done] Ricochet Arena, approach 1: authoritative Node server + client prediction (`projects/ricochet-arena-server`)
-2. [in progress] Ricochet Arena, approach 2: serverless peer-to-peer (WebRTC, host-authoritative), static hosting only (`projects/ricochet-arena-p2p`)
+2. [done] Ricochet Arena, approach 2: serverless peer-to-peer (WebRTC, host-authoritative), static hosting only (`projects/ricochet-arena-p2p`)
 3. Power-up crates (laser, frag bomb, gatling, homing missile) shared by both approaches
 4. Mobile touch controls (virtual stick + fire button)
 5. AI opponents for solo practice
