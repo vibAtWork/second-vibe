@@ -1,0 +1,16 @@
+{
+  "name": "ricochet-arena-server",
+  "version": "1.0.0",
+  "description": "Browser multiplayer maze tank game with bouncing bullets (authoritative server + client prediction)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "license": "MIT"
+}
