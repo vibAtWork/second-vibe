@@ -27,6 +27,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SERIALIZER = HERE / "serialize.nix"
+OPTIONS_NIX = HERE / "options.nix"
 MARKER_FILE = ".nixql-generated"
 
 SCHEMA = """
@@ -50,6 +51,16 @@ CREATE INDEX IF NOT EXISTS opts_path ON opts(path);
 -- Convenience: scalar-decoded value (`v`) for easy WHERE clauses.
 CREATE VIEW IF NOT EXISTS o AS
   SELECT host, path, value, value ->> '$' AS v FROM opts;
+-- NixOS option metadata (ingest --options): type and defining files per option.
+CREATE TABLE IF NOT EXISTS options(
+  host TEXT NOT NULL, path TEXT NOT NULL, type TEXT, description TEXT, files TEXT,
+  PRIMARY KEY(host, path)) WITHOUT ROWID;
+-- "Why does this host have this value?" leaf -> owning option, its type and defining files.
+CREATE VIEW IF NOT EXISTS why AS
+  SELECT o.host, o.path, o.value, op.path AS option, op.description AS type, op.files
+  FROM opts o LEFT JOIN options op ON op.host = o.host AND op.path = (
+    SELECT p2.path FROM options p2 WHERE p2.host = o.host AND opt_match(p2.path, o.path)
+    ORDER BY opt_match(p2.path, o.path) DESC LIMIT 1);
 -- Overrides that the last evaluation does not reflect yet (not deployed / not imported).
 CREATE VIEW IF NOT EXISTS drift AS
   SELECT ov.host, ov.path, ov.value AS wanted, ev.value AS evaluated, ov.changeset
@@ -235,6 +246,12 @@ lib = rec {
 
 def eval_fleet(source: str, kind: str = "auto", select: list[str] | None = None,
                max_depth: int = 16, hosts: list[str] | None = None) -> dict[str, dict]:
+    return eval_fleet_full(source, kind, select, max_depth, hosts)[0]
+
+
+def eval_fleet_full(source: str, kind: str = "auto", select: list[str] | None = None,
+                    max_depth: int = 16, hosts: list[str] | None = None,
+                    with_options: bool = False) -> tuple[dict[str, dict], dict[str, list]]:
     """Evaluate a fleet to {host: config-json}.
 
     kind:
@@ -252,6 +269,7 @@ def eval_fleet(source: str, kind: str = "auto", select: list[str] | None = None,
             kind = "json"
         else:
             kind = "nix"
+    options: dict[str, list] = {}
     if kind == "json":
         data = json.loads(src.read_text())
         if select:
@@ -275,14 +293,26 @@ let
   ser = import {SERIALIZER} {{ maxDepth = {int(max_depth)}; }};
   pick = {_select_expr(select)};
   cfgOf = sys: if builtins.isAttrs sys && sys ? config && sys ? options then sys.config else sys;
-in builtins.mapAttrs (_: sys: ser (pick (cfgOf sys))) fleet
+  optPaths = {_opt_paths(select)};
+  optsOf = sys: if {"true" if with_options else "false"} && builtins.isAttrs sys && sys ? options
+    then import {OPTIONS_NIX} {{ options = sys.options; paths = optPaths; }} else [ ];
+in builtins.mapAttrs (_: sys: {{ config = ser (pick (cfgOf sys)); options = optsOf sys; }}) fleet
 """
-        data = _nix_eval_json(expr)
+        raw = _nix_eval_json(expr)
+        data = {h: v["config"] for h, v in raw.items()}
+        options = {h: v["options"] for h, v in raw.items() if v["options"]}
     if hosts:
         data = {h: c for h, c in data.items() if h in hosts}
     if not isinstance(data, dict):
         raise NixqlError("fleet must evaluate to an attrset of hosts")
-    return data
+    return data, options
+
+
+def _opt_paths(select):
+    if not select:
+        return "[ [ ] ]"
+    return "[ " + " ".join("[ " + " ".join(nix_string(x) for x in split_path(p)) + " ]"
+                           for p in select) + " ]"
 
 
 def _select_py(cfg, select):
@@ -306,6 +336,37 @@ def _now() -> str:
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+_seg_cache: dict[str, list[str]] = {}
+
+
+def _segs(p: str) -> list[str]:
+    r = _seg_cache.get(p)
+    if r is None:
+        if len(_seg_cache) > 200_000:
+            _seg_cache.clear()
+        r = _seg_cache[p] = split_path(p)
+    return r
+
+
+def opt_match(option_path: str, leaf_path: str) -> int:
+    """>0 if option_path (may contain "<name>" wildcards) is a prefix of leaf_path.
+    Returns a score: longer and more literal matches score higher; 0 = no match."""
+    if option_path is None or leaf_path is None:
+        return 0
+    o, l = _segs(option_path), _segs(leaf_path)
+    if len(o) > len(l):
+        return 0
+    score = 0
+    for a, b in zip(o, l):
+        if a == b:
+            score += 2
+        elif a == "<name>":
+            score += 1
+        else:
+            return 0
+    return score
+
+
 def _register_functions(con: sqlite3.Connection):
     def f_nix(v):
         if v is None:
@@ -322,6 +383,7 @@ def _register_functions(con: sqlite3.Connection):
         return join_path(json.loads(segs_json))
 
     con.create_function("nix", 1, f_nix, deterministic=True)
+    con.create_function("opt_match", 2, opt_match, deterministic=True)
     con.create_function("path_segs", 1, f_segs, deterministic=True)
     con.create_function("path_join", 1, f_join, deterministic=True)
 
@@ -394,7 +456,7 @@ class IngestReport:
 
 
 def ingest(con: sqlite3.Connection, fleet: dict[str, dict], source: str = "",
-           prune: bool = False) -> IngestReport:
+           prune: bool = False, options: dict[str, list] | None = None) -> IngestReport:
     """Replace `evaluated` for the given hosts and rebuild `opts` = evaluated + overrides."""
     rep = IngestReport()
     con.execute("BEGIN IMMEDIATE")
@@ -402,7 +464,7 @@ def ingest(con: sqlite3.Connection, fleet: dict[str, dict], source: str = "",
         if prune:
             gone = [r[0] for r in con.execute("SELECT name FROM hosts") if r[0] not in fleet]
             for h in gone:
-                for t in ("opts", "evaluated", "overrides"):
+                for t in ("opts", "evaluated", "overrides", "options"):
                     con.execute(f"DELETE FROM {t} WHERE host=?", (h,))
                 con.execute("DELETE FROM hosts WHERE name=?", (h,))
         for host, cfg in sorted(fleet.items()):
@@ -422,6 +484,12 @@ def ingest(con: sqlite3.Connection, fleet: dict[str, dict], source: str = "",
                 for p in sorted(set(old) | set(new)):
                     if old.get(p) != new.get(p):
                         rep.upstream.append((host, p, old.get(p), new.get(p)))
+            if options is not None and host in options:
+                con.execute("DELETE FROM options WHERE host=?", (host,))
+                con.executemany(
+                    "INSERT OR REPLACE INTO options VALUES(?,?,?,?,?)",
+                    [(host, join_path(o["path"]), canon(o["type"]), o["type"].get("description", ""),
+                      canon(o["files"])) for o in options[host] if o["path"]])
             con.execute("INSERT INTO opts SELECT host, path, value FROM evaluated WHERE host=?", (host,))
             con.execute(
                 "INSERT INTO opts(host, path, value) SELECT host, path, value FROM overrides WHERE host=? "
@@ -565,6 +633,59 @@ def _check_shape(con, changes):
                 "(e.g. to null, false or [])")
 
 
+_INT_NAMES = {"int", "signedInt", "unsignedInt", "positiveInt", "intBetween", "unsignedInt8",
+              "unsignedInt16", "unsignedInt32", "signedInt8", "signedInt16", "signedInt32"}
+_STR_NAMES = {"str", "string", "singleLineStr", "nonEmptyStr", "separatedString", "lines",
+              "commas", "envVar", "strMatching", "passwdEntry str", "path", "pathInStore"}
+
+
+def type_check(t: dict, v) -> bool | None:
+    """True/False if we can decide that value v fits NixOS type t; None if we can't tell."""
+    name = t.get("name", "?")
+    if name in ("bool", "boolByOr"):
+        return isinstance(v, bool)
+    if name in _INT_NAMES:
+        if not isinstance(v, int) or isinstance(v, bool):
+            return False
+        m = re.search(r"between (-?\d+) and (-?\d+)", t.get("description", ""))
+        return not m or int(m.group(1)) <= v <= int(m.group(2))
+    if name in ("float", "number"):
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+    if name in _STR_NAMES:
+        return isinstance(v, str)
+    if name == "enum" and "values" in t:
+        return v in t["values"]
+    if name == "nullOr" and "elemType" in t:
+        return True if v is None else type_check(t["elemType"], v)
+    if name == "listOf" and "elemType" in t:
+        if not isinstance(v, list):
+            return False
+        results = [type_check(t["elemType"], x) for x in v]
+        return False if False in results else (None if None in results else True)
+    if name == "either" and "left" in t and "right" in t:
+        a, b = type_check(t["left"], v), type_check(t["right"], v)
+        return True if (a or b) else (None if None in (a, b) else False)
+    return None
+
+
+def _check_types(con, changes):
+    errors = []
+    for c in changes:
+        if c.new is None:
+            continue
+        n = len(_segs(c.path))
+        r = con.execute("""SELECT type FROM options WHERE host=? AND opt_match(path, ?) > 0
+                           AND json_array_length(path_segs(path)) = ? ORDER BY opt_match(path, ?) DESC LIMIT 1""",
+                        (c.host, c.path, n, c.path)).fetchone()
+        if not r or not r[0]:
+            continue
+        t = json.loads(r[0])
+        if type_check(t, json.loads(c.new)) is False:
+            errors.append(f"  {c.host}:{c.path} expects {t.get('description') or t.get('name')}; got {c.new}")
+    if errors:
+        raise NixqlError("type error(s); transaction rolled back:\n" + "\n".join(errors))
+
+
 def _record(con, changes, message, sql, reverts=None) -> int:
     cur = con.execute("INSERT INTO changesets(at, message, sql, reverts) VALUES(?,?,?,?)",
                       (_now(), message, sql, reverts))
@@ -616,6 +737,7 @@ def apply(con: sqlite3.Connection, sql: str, message: str = "", policies=(),
         _normalize_touched(con)
         res.changes = _collect_changes(con)
         _check_shape(con, res.changes)
+        _check_types(con, res.changes)
         violations = run_policies(con, list(policies))
         if violations:
             raise PolicyViolation(violations)

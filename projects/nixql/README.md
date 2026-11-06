@@ -16,6 +16,11 @@ SQLite table, and lets you:
   `git diff`-able and deterministic.
 * **keep history**: every apply is a changeset with old/new values. You can
   `revert` it, with conflict detection, and policies check reverts too.
+* **type-check edits against the real NixOS option types** (`ingest --options`):
+  setting `PermitRootLogin = "maybe"` or `ports = [70000]` fails inside the
+  transaction, with the option's own type description in the error.
+* **answer "why is it this value?"**: the `why` view joins each leaf to its
+  NixOS option and the files that define it on that host.
 * **detect drift**: after you re-evaluate, overrides the evaluation doesn't
   reflect yet (not imported, not deployed) show up in `status`.
 
@@ -34,7 +39,7 @@ SQLite table, and lets you:
 
 ```bash
 ./examples/demo.sh        # toy fleet, needs only nix + python3 (stdlib only)
-python3 -m unittest discover -s tests   # 30 tests
+python3 -m unittest discover -s tests   # 35 tests (1 needs $NIXPKGS)
 ```
 
 ## Usage
@@ -113,6 +118,27 @@ WHERE path = 'services.openssh.settings.PasswordAuthentication'
 INSERT INTO opts VALUES ('db1', 'services.prometheus.exporters.node.enable', 'true');
 ```
 
+### Option types and "why" (`ingest --options`)
+
+With `--options`, nixql also walks `sys.options` under the selected paths
+([`options.nix`](nixql/options.nix)). It descends into submodules, using a
+`"<name>"` wildcard for `attrsOf submodule`, so `users.users."<name>".uid` is
+covered. It stores each option's type and the files that define it.
+
+```
+$ nixql apply "UPDATE opts SET value='\"maybe\"' WHERE path='services.openssh.settings.PermitRootLogin'"
+nixql: type error(s); transaction rolled back:
+  db1:services.openssh.settings.PermitRootLogin expects null or one of "yes", "without-password",
+      "prohibit-password", "forced-commands-only", "no"; got "maybe"
+
+$ nixql q "SELECT host, value, files FROM why WHERE path = 'networking.firewall.allowedTCPPorts'"
+```
+
+Checked types: bool, the int family (with ranges), float, the str family, enum,
+nullOr, listOf and either. Anything else (submodules, packages, …) is "can't
+tell" and allowed. `files` lists definitions in module order. After an apply it
+includes `nixql-overrides/<host>.nix`, so you can see the override is what's in effect.
+
 A policy is a file in `policies/` (or `--policy FILE`, or `--check 'SELECT …'`).
 See [`examples/fleet/policies`](examples/fleet/policies), e.g. "every sshd port
 is open in the firewall", which is exactly the lockout the transaction saves you from.
@@ -129,8 +155,10 @@ is open in the firewall", which is exactly the lockout the transaction saves you
 
 ## Verified
 
-* 30 unit/integration tests (`tests/`), including evaluating the generated
-  modules with `nix eval` and running the CLI end to end.
+* 35 unit/integration tests (`tests/`), including evaluating the generated
+  modules with `nix eval` and running the CLI end to end. With `NIXPKGS=` set,
+  one test evaluates a real NixOS fleet with option types: it rejects badly typed
+  edits, applies a change, re-evaluates with the overrides imported, and asserts no drift.
 * A **real NixOS 25.05** fleet ([`examples/nixos/fleet.nix`](examples/nixos/fleet.nix),
   3 hosts, ~4400 leaves with `users.users` selected, about 9 s to evaluate).
   Run apply, then re-ingest with the overrides imported: `status` reports no

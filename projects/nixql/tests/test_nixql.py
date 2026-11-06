@@ -260,6 +260,80 @@ class TestOverridesLifecycle(Base):
         self.assertEqual(self.con.execute("SELECT count(*) FROM changesets").fetchone()[0], 2)
 
 
+class TestOptionTypes(Base):
+    U16 = {"name": "unsignedInt16", "description": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"}
+
+    def test_type_check(self):
+        tc = core.type_check
+        self.assertTrue(tc({"name": "bool"}, False))
+        self.assertFalse(tc({"name": "bool"}, "yes"))
+        self.assertFalse(tc({"name": "int"}, True))  # bools are not ints
+        self.assertTrue(tc(self.U16, 22))
+        self.assertFalse(tc(self.U16, 70000))
+        self.assertFalse(tc({"name": "listOf", "elemType": self.U16}, [22, -1]))
+        enum = {"name": "enum", "values": ["yes", "no"]}
+        self.assertTrue(tc({"name": "nullOr", "elemType": enum}, None))
+        self.assertFalse(tc({"name": "nullOr", "elemType": enum}, "maybe"))
+        self.assertTrue(tc({"name": "either", "left": {"name": "bool"}, "right": {"name": "str"}}, "x"))
+        self.assertIsNone(tc({"name": "submodule"}, 1))  # can't tell -> no opinion
+        self.assertIsNone(tc({"name": "listOf", "elemType": {"name": "package"}}, ["x"]))
+
+    def test_opt_match(self):
+        m = core.opt_match
+        self.assertGreater(m('users.users."<name>".uid', "users.users.ops.uid"), 0)
+        self.assertEqual(m('users.users."<name>".uid', "users.users.ops.shell"), 0)
+        self.assertGreater(m("users.users.root.uid", "users.users.root.uid"),
+                           m('users.users."<name>".uid', "users.users.root.uid"))
+        self.assertGreater(m("services.openssh", "services.openssh.ports"), 0)
+
+    def test_apply_rejects_badly_typed_values(self):
+        self.con.executemany("INSERT INTO options VALUES(?,?,?,?,?)", [
+            (h, "services.openssh.ports", json.dumps({"name": "listOf", "elemType": self.U16}), "", "[]")
+            for h in ("web1", "db1", "dev1")])
+        with self.assertRaisesRegex(NixqlError, "type error"):
+            core.apply(self.con, "UPDATE opts SET value='[70000]' WHERE path='services.openssh.ports'")
+        self.assertEqual(val(self.con, "web1", "services.openssh.ports"), [22])
+        self.assertTrue(core.apply(self.con, "UPDATE opts SET value='[2222]' WHERE path='services.openssh.ports'").committed)
+
+    def test_why_view(self):
+        self.con.execute("INSERT INTO options VALUES('web1', 'users.users.\"<name>\".isNormalUser', "
+                         "'{\"name\":\"bool\"}', 'boolean', '[\"/etc/nixos/users.nix\"]')")
+        r = self.con.execute("SELECT option, files FROM why WHERE host='web1' AND path LIKE 'users.%'").fetchone()
+        self.assertEqual(r, ('users.users."<name>".isNormalUser', '["/etc/nixos/users.nix"]'))
+
+
+NIXPKGS = __import__("os").environ.get("NIXPKGS")
+
+
+@unittest.skipUnless(HAVE_NIX and NIXPKGS, "needs nix and $NIXPKGS (a nixpkgs checkout)")
+class TestRealNixOS(unittest.TestCase):
+    def test_ingest_with_options_and_typecheck(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            src = ROOT / "examples" / "nixos" / "fleet.nix"
+            shutil.copy(src, tmp / "fleet.nix")
+            fleet, options = core.eval_fleet_full(
+                str(tmp / "fleet.nix"), select=["services.openssh", "networking.firewall", "users.users"],
+                with_options=True)
+            con = core.connect(tmp / "f.db")
+            core.ingest(con, fleet, options=options)
+            self.assertEqual(val(con, "web1", "networking.firewall.allowedTCPPorts"), [22, 80, 443])
+            with self.assertRaisesRegex(NixqlError, "boolean"):
+                core.apply(con, "UPDATE opts SET value='\"yes\"' WHERE path='services.openssh.settings.PasswordAuthentication'")
+            with self.assertRaisesRegex(NixqlError, "integer"):
+                core.apply(con, "UPDATE opts SET value='\"x\"' WHERE path='users.users.ops.uid'")
+            r = core.apply(con, "UPDATE opts SET value='[2222]' WHERE path='services.openssh.ports'",
+                           out_dir=str(tmp / "nixql-overrides"))
+            self.assertTrue(r.committed)
+            # Re-evaluate with the generated overrides imported: no drift.
+            fleet, options = core.eval_fleet_full(str(tmp / "fleet.nix"),
+                                                  select=["services.openssh", "networking.firewall", "users.users"])
+            self.assertEqual(core.ingest(con, fleet).drift, [])
+            self.assertEqual(val(con, "db1", "services.openssh.ports", "evaluated"), [2222])
+        finally:
+            shutil.rmtree(tmp)
+
+
 @unittest.skipUnless(HAVE_NIX, "nix not installed")
 class TestNix(unittest.TestCase):
     def setUp(self):

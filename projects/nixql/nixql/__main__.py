@@ -84,10 +84,15 @@ def _show_violations(e: PolicyViolation):
 
 def cmd_ingest(args):
     con = core.connect(args.db)
-    fleet = core.eval_fleet(args.source, kind=args.kind, select=args.select,
-                            max_depth=args.max_depth, hosts=args.hosts)
-    rep = core.ingest(con, fleet, source=args.source, prune=args.prune)
+    fleet, options = core.eval_fleet_full(args.source, kind=args.kind, select=args.select,
+                                          max_depth=args.max_depth, hosts=args.hosts,
+                                          with_options=args.options)
+    rep = core.ingest(con, fleet, source=args.source, prune=args.prune,
+                      options=options if args.options else None)
     print(f"ingested {len(rep.hosts)} host(s), {rep.leaves} leaves: {', '.join(rep.hosts)}")
+    if args.options:
+        n = sum(len(v) for v in options.values())
+        print(f"option metadata: {n} option(s)" + ("" if n else " (no `.options`: not NixOS systems?)"))
     if rep.upstream:
         print(f"\nupstream changes since last ingest ({len(rep.upstream)}):")
         for h, p, o, n in rep.upstream[: args.show]:
@@ -232,6 +237,8 @@ def build_parser():
     sp.add_argument("--hosts", type=lambda s: s.split(","), help="only these hosts")
     sp.add_argument("--max-depth", type=int, default=16)
     sp.add_argument("--prune", action="store_true", help="drop hosts no longer in the source")
+    sp.add_argument("--options", action="store_true",
+                    help="also load NixOS option types + defining files (enables type checks and the `why` view)")
     sp.add_argument("--show", type=int, default=20, help="max rows of upstream/drift to print")
     sp.set_defaults(fn=cmd_ingest)
 

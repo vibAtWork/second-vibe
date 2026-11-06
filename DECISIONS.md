@@ -13,3 +13,12 @@
   empty and would silently drop them.
 - **nixpkgs for the demo is the 25.05 channel tarball** from releases.nixos.org
   (the GitHub API is blocked from this session), kept in the scratchpad, not committed.
+- **Approach B is a separate project (`fleetdb`), not a nixql mode.** It inverts the
+  data flow (DB → Nix instead of Nix → DB), so it shares almost no code; the owner
+  asked for one folder per approach.
+- **fleetdb uid range capped at 29999**, found by the real-NixOS check: nixbld users
+  occupy 30001+.
+- **Option type checking was folded into nixql** rather than a third folder: it's
+  an extension of nixql's data model (same tables, same apply path), not a new approach.
+- **Unknown NixOS types are permissive** ("can't tell" → allowed) so type checks
+  never block valid edits; only definitely-wrong values are rejected.
