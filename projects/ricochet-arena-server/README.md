@@ -18,6 +18,14 @@ npm install
 npm start            # http://localhost:8080  (PORT=xxxx to change)
 ```
 
+Or with Docker (image published by `.github/workflows/docker-ricochet-arena.yml`, for amd64 and arm64):
+
+```bash
+docker run -d --name ricochet-arena -p 8080:8080 --restart unless-stopped ghcr.io/vibatwork/ricochet-arena:latest
+```
+
+To build it yourself: `docker build -t ricochet-arena projects/ricochet-arena-server`.
+
 Open the page and press **Join**. The URL gets a `?room=` code: send it to
 friends (**Copy invite link**) and everyone in that room plays together. To play
 over the internet, run it on any host that can run Node (a VPS, Fly.io, Render,
