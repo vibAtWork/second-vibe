@@ -1,0 +1,49 @@
+name: Publish Ricochet Arena image
+
+on:
+  push:
+    branches: [main, master, claude/affectionate-euler-pqfw1h]
+    paths:
+      - 'projects/ricochet-arena-server/**'
+      - '.github/workflows/docker-ricochet-arena.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test
+        working-directory: projects/ricochet-arena-server
+        run: npm ci && npm test
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image name (lowercase owner)
+        id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ricochet-arena" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: projects/ricochet-arena-server
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.img.outputs.name }}:latest
+            ${{ steps.img.outputs.name }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Ricochet Arena - browser multiplayer maze tank game
+            org.opencontainers.image.licenses=MIT
