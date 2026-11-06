@@ -22,6 +22,27 @@ java/openssl-evp           2.51x     1.92x     1.17x     0.85x
 
 A full run takes about 2–3 minutes. `./run.sh --quick` takes about 20 seconds.
 
+## Run with Docker (nothing to install but Docker)
+
+```bash
+docker run --rm ghcr.io/vibatwork/aes-gcm-bench --quick
+```
+
+Any `run.sh` option can go after the image name. To keep the CSV files:
+
+```bash
+mkdir -p results && docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/results:/app/results" ghcr.io/vibatwork/aes-gcm-bench --repeat 3 --cpu 2
+```
+
+- The image is built for `linux/amd64` and `linux/arm64` by
+  `.github/workflows/aes-gcm-bench-image.yml`, which pushes `:latest` and
+  `:sha-<commit>` to GHCR on every change to this directory.
+- Docker adds no meaningful overhead to CPU-bound crypto on Linux. But the
+  image measures **its own** Java (Temurin 21) and OpenSSL (Ubuntu 24.04,
+  3.0.x), not the versions on your host. To benchmark your host's
+  OpenSSL/JDK, run `./run.sh` natively.
+- To build the image locally: `docker build -t aes-gcm-bench projects/aes-gcm-bench`.
+
 ## Requirements
 
 | Need | Debian/Ubuntu | Fedora | Arch |
@@ -122,4 +143,5 @@ report.sh            CSV -> tables
 java/GcmBench.java   JCA harness
 c/gcm_bench.c        OpenSSL EVP harness
 tests/smoke.sh       smoke test
+Dockerfile           runnable image (prebuilt harnesses, ENTRYPOINT run.sh)
 ```

@@ -25,21 +25,25 @@ while [[ $# -gt 0 ]]; do
 done
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing '$1'. $2" >&2; exit 1; }; }
-need javac "Install a JDK 17+ (Debian/Ubuntu: sudo apt install openjdk-21-jdk-headless; Fedora: sudo dnf install java-21-openjdk-devel)"
+need java "Install a JDK 17+ (Debian/Ubuntu: sudo apt install openjdk-21-jdk-headless; Fedora: sudo dnf install java-21-openjdk-devel)"
 need openssl "Install openssl."
-CC_BIN="${CC:-cc}"
-need "$CC_BIN" "Install a C compiler (sudo apt install build-essential / sudo dnf install gcc)."
 
 PIN=()
 if [[ -n "$CPU" ]]; then need taskset "taskset is in util-linux."; PIN=(taskset -c "$CPU"); fi
 
 mkdir -p build "$OUT"
-echo ">> building" >&2
-javac -d build java/GcmBench.java
-if ! "$CC_BIN" -O2 -o build/gcm_bench c/gcm_bench.c -lcrypto 2>build/cc.log; then
-  cat build/cc.log >&2
-  echo "C build failed: install OpenSSL headers (Debian/Ubuntu: libssl-dev, Fedora: openssl-devel, Arch: openssl)." >&2
-  exit 1
+# AESGCM_PREBUILT=1 (set in the Docker image) skips compiling and uses build/ as-is.
+if [[ "${AESGCM_PREBUILT:-0}" != 1 ]]; then
+  need javac "Install a JDK 17+ (Debian/Ubuntu: sudo apt install openjdk-21-jdk-headless; Fedora: sudo dnf install java-21-openjdk-devel)"
+  CC_BIN="${CC:-cc}"
+  need "$CC_BIN" "Install a C compiler (sudo apt install build-essential / sudo dnf install gcc)."
+  echo ">> building" >&2
+  javac -d build java/GcmBench.java
+  if ! "$CC_BIN" -O2 -o build/gcm_bench c/gcm_bench.c -lcrypto 2>build/cc.log; then
+    cat build/cc.log >&2
+    echo "C build failed: install OpenSSL headers (Debian/Ubuntu: libssl-dev, Fedora: openssl-devel, Arch: openssl)." >&2
+    exit 1
+  fi
 fi
 
 STAMP=$(date +%Y%m%d-%H%M%S)

@@ -2,7 +2,7 @@
 
 ## Built
 - **projects/aes-gcm-bench**: benchmarks Java's AES-GCM against OpenSSL's on your own machine.
-  Try it: `projects/aes-gcm-bench/run.sh --quick` (~20s), or `run.sh --repeat 3 --cpu 2` for a careful run.
+  Try it: `projects/aes-gcm-bench/run.sh --quick` (~20s), or with Docker: `docker run --rm ghcr.io/vibatwork/aes-gcm-bench --quick`.
 
 ## Review first
 - `projects/aes-gcm-bench/README.md`, section "What the rows mean". It explains
