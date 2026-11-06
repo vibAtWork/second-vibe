@@ -26,6 +26,7 @@ function localStorageSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 
 
 // ------------------------------------------------------------- input
 const keys = new Set();
+const tapped = new Set(); // keys pressed since the last tick, so very short taps still count
 const SCHEMES = {
   arrows: { f: 'ArrowUp', b: 'ArrowDown', l: 'ArrowLeft', r: 'ArrowRight', fire: 'KeyM' },
   esdf: { f: 'KeyE', b: 'KeyD', l: 'KeyS', r: 'KeyF', fire: 'KeyQ' },
@@ -33,7 +34,7 @@ const SCHEMES = {
 const GAME_KEYS = new Set(Object.values(SCHEMES).flatMap(s => Object.values(s)));
 addEventListener('keydown', e => {
   if (document.activeElement === $('name')) return;
-  if (GAME_KEYS.has(e.code)) { keys.add(e.code); e.preventDefault(); }
+  if (GAME_KEYS.has(e.code)) { keys.add(e.code); if (!e.repeat) tapped.add(e.code); e.preventDefault(); }
 });
 addEventListener('keyup', e => { keys.delete(e.code); });
 addEventListener('blur', () => keys.clear());
@@ -43,7 +44,7 @@ canvas.addEventListener('pointermove', e => {
   mouse.x = (e.clientX - r.left) / r.width * VIEW_W;
   mouse.y = (e.clientY - r.top) / r.height * VIEW_H;
 });
-canvas.addEventListener('pointerdown', e => { mouse.down = true; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointerdown', e => { mouse.down = true; mouse.tapped = true; canvas.setPointerCapture(e.pointerId); });
 canvas.addEventListener('pointerup', () => { mouse.down = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -176,12 +177,14 @@ function localTick() {
     let bits = 0, input;
     if (seat.slot === 'mouse') {
       const mx = mouse.x - (maze ? maze.ox : 0), my = mouse.y - (maze ? maze.oy : 0);
-      bits = 32 | (mouse.down ? 16 : 0);
-      input = { mouse: { x: mx, y: my }, fire: mouse.down };
+      const fire = mouse.down || mouse.tapped;
+      bits = 32 | (fire ? 16 : 0);
+      input = { mouse: { x: mx, y: my }, fire };
       seat.lastMouse = [Math.round(mx * 10) / 10, Math.round(my * 10) / 10];
     } else {
       const k = SCHEMES[seat.slot];
-      input = { f: keys.has(k.f), b: keys.has(k.b), l: keys.has(k.l), r: keys.has(k.r), fire: keys.has(k.fire) };
+      const down = c => keys.has(c) || tapped.has(c);
+      input = { f: down(k.f), b: down(k.b), l: down(k.l), r: down(k.r), fire: down(k.fire) };
       bits = (input.f ? 1 : 0) | (input.b ? 2 : 0) | (input.l ? 4 : 0) | (input.r ? 8 : 0) | (input.fire ? 16 : 0);
     }
     const seq = ++seat.seq;
@@ -192,7 +195,8 @@ function localTick() {
     sendMsg({ t: 'in', id: seat.id, f: seat.pending.slice(-SEND_REDUNDANCY).map(p => p.wire) });
     if (seat.pred && seat.pred.alive && maze && localFrozen <= 0) moveTank(maze, seat.pred, input);
   }
-  if (latest) localFrozen = latest.frozen - (seats.length ? 0 : 0);
+  tapped.clear(); mouse.tapped = false;
+  if (latest) localFrozen = latest.frozen;
 }
 // Use a timer (not rAF) so input keeps flowing in background tabs.
 setInterval(() => {
