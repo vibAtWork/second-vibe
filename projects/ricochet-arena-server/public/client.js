@@ -2,6 +2,8 @@ import {
   FRAME_MS, VIEW_W, VIEW_H, BOTTOM_BAR, WALL, TANK_W, TANK_L, BULLET_SPAWN,
   moveTank, traceAimer, CRATE_HALF,
 } from './shared/sim.js';
+import { normaliseFrame, frameToInput, cleanName } from './shared/room.js';
+import { Auditor } from './shared/verify.js';
 
 const INTERP_MS = 90;        // render remote objects this far in the past
 const SEND_REDUNDANCY = 4;   // resend last N input frames each packet (loss tolerance)
@@ -59,6 +61,15 @@ const offsets = [];
 const particles = [];
 let banner = null;           // {text, until}
 let rtt = 0;
+let cheat = null;            // set when the P2P host is caught breaking the rules
+const auditor = new Auditor(reason => {
+  cheat = reason;
+  statusEl.textContent = 'stopped: host cheating detected';
+  onCheatDetected(reason);
+});
+setInterval(() => { if (auditor.stale(performance.now())) auditor.fail('host stopped publishing audit data'); }, 1000);
+// Transport-specific reaction (P2P disconnects from the host); no-op otherwise.
+function onCheatDetected() {}
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -77,9 +88,11 @@ function join(slot) {
   if (seats.some(s => s.slot === slot)) return;
   const base = $('name').value.trim() || 'Player';
   localStorageSet('ra-name', base);
-  const name = slot === 'arrows' ? base : `${base} ${slot === 'esdf' ? '2' : '(mouse)'}`;
-  seats.push({ slot, id: null, seq: 0, pending: [], pred: null, off: { x: 0, y: 0, r: 0 } });
-  sendMsg({ t: 'join', name, slot });
+  const name = cleanName(slot === 'arrows' ? base : `${base} ${slot === 'esdf' ? '2' : '(mouse)'}`);
+  const nonce = crypto.getRandomValues(new Uint32Array(1))[0];
+  seats.push({ slot, scheme: slot === 'mouse' ? 'mouse' : 'keys', id: null, seq: 0, pending: [], pred: null, off: { x: 0, y: 0, r: 0 } });
+  auditor.noteJoin(name, nonce);
+  sendMsg({ t: 'join', name, slot, nonce });
   audio.unlock();
   updateButtons();
 }
@@ -106,7 +119,11 @@ function onMessage(m) {
     snaps.length = 0;
   } else if (m.t === 'joined') {
     const s = seats.find(s => s.slot === m.slot && s.id == null);
-    if (s) s.id = m.id;
+    if (s) { s.id = m.id; auditor.noteSeat(m.id); }
+  } else if (m.t === 'sync') {
+    auditor.sync(m.state);
+  } else if (m.t === 'log') {
+    auditor.log(m);
   } else if (m.t === 'full') {
     seats.pop(); updateButtons();
     statusEl.textContent = 'room is full';
@@ -175,24 +192,22 @@ let localFrozen = 0;
 function localTick() {
   for (const seat of seats) {
     if (seat.id == null) continue;
-    let bits = 0, input;
-    if (seat.slot === 'mouse') {
-      const mx = mouse.x - (maze ? maze.ox : 0), my = mouse.y - (maze ? maze.oy : 0);
-      const fire = mouse.down || mouse.tapped;
-      bits = 32 | (fire ? 16 : 0);
-      input = { mouse: { x: mx, y: my }, fire };
-      seat.lastMouse = [Math.round(mx * 10) / 10, Math.round(my * 10) / 10];
+    let bits, mx = 0, my = 0;
+    if (seat.scheme === 'mouse') {
+      bits = mouse.down || mouse.tapped ? 16 : 0;
+      mx = mouse.x - (maze ? maze.ox : 0); my = mouse.y - (maze ? maze.oy : 0);
     } else {
       const k = SCHEMES[seat.slot];
       const down = c => keys.has(c) || tapped.has(c);
-      input = { f: down(k.f), b: down(k.b), l: down(k.l), r: down(k.r), fire: down(k.fire) };
-      bits = (input.f ? 1 : 0) | (input.b ? 2 : 0) | (input.l ? 4 : 0) | (input.r ? 8 : 0) | (input.fire ? 16 : 0);
+      bits = (down(k.f) ? 1 : 0) | (down(k.b) ? 2 : 0) | (down(k.l) ? 4 : 0) | (down(k.r) ? 8 : 0) | (down(k.fire) ? 16 : 0);
     }
+    // Normalise exactly as the room does, then predict with what the room will apply.
+    const frame = normaliseFrame(seat.scheme, bits, mx, my);
+    const input = frameToInput(frame);
     const seq = ++seat.seq;
-    const mx = seat.lastMouse ? seat.lastMouse[0] : 0, my = seat.lastMouse ? seat.lastMouse[1] : 0;
-    if (input.mouse) input.mouse = { x: mx, y: my }; // predict with exactly what the server receives
-    seat.pending.push({ seq, input, wire: [seq, bits, mx, my] });
+    seat.pending.push({ seq, input, wire: [seq, ...frame] });
     if (seat.pending.length > 100) seat.pending.shift();
+    auditor.noteFrame(seat.id, seq, frame);
     sendMsg({ t: 'in', id: seat.id, f: seat.pending.slice(-SEND_REDUNDANCY).map(p => p.wire) });
     if (seat.pred && seat.pred.alive && !seat.pred.locked && maze && localFrozen <= 0) moveTank(maze, seat.pred, input);
   }
@@ -584,6 +599,13 @@ function render() {
     ctx.font = '700 30px system-ui';
     ctx.lineWidth = 5; ctx.strokeStyle = '#fff'; ctx.strokeText(banner.text, VIEW_W / 2, mazeH / 2 - 40);
     ctx.fillStyle = banner.color; ctx.fillText(banner.text, VIEW_W / 2, mazeH / 2 - 40);
+  }
+  if (cheat) {
+    ctx.fillStyle = '#000b'; ctx.fillRect(0, mazeH / 2 - 50, VIEW_W, 90);
+    ctx.fillStyle = '#ffcf33'; ctx.font = '700 22px system-ui';
+    ctx.fillText('Cheating detected - game stopped', VIEW_W / 2, mazeH / 2 - 15);
+    ctx.fillStyle = '#fff'; ctx.font = '14px system-ui';
+    ctx.fillText(cheat, VIEW_W / 2, mazeH / 2 + 12);
   }
   if (!seats.length) {
     ctx.fillStyle = '#0009'; ctx.font = '600 16px system-ui';

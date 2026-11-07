@@ -8,6 +8,8 @@
 // limit on how many bullets each tank can have in play.
 // All code, art and maze generation here is original.
 
+import { sin as dsin, cos as dcos, atan2 as datan2, hypot as dhypot } from './dmath.js';
+
 export const FPS = 25;
 export const FRAME_MS = 1000 / FPS;
 export const VIEW_W = 692;           // logical canvas width
@@ -50,13 +52,24 @@ export const TANK_L = 0.40;
 // Small seedable PRNG (mulberry32) so mazes can be reproduced from a seed.
 export function rng(seed) {
   let a = seed >>> 0;
-  return function () {
+  const next = function () {
     a = (a + 0x6D2B79F5) >>> 0;
     let t = a;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+  // exposed so a whole game can be serialized and resumed bit-exactly
+  next.getState = () => a;
+  next.setState = v => { a = v >>> 0; };
+  return next;
+}
+
+// 32-bit FNV-1a hash of a string (used for state fingerprints and seeds).
+export function hashString(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
 }
 
 // ---------------------------------------------------------------- Maze
@@ -150,7 +163,7 @@ function pts(S) {
 }
 
 function hitAny(m, list, x, y, rot) {
-  const a = rot * D2R, c = Math.cos(a), s = Math.sin(a);
+  const a = rot * D2R, c = dcos(a), s = dsin(a);
   for (const [px, py] of list) {
     if (wallAt(m, x + px * c - py * s, y + px * s + py * c)) return true;
   }
@@ -175,8 +188,8 @@ export function moveTank(m, tank, input) {
   const mouse = !!input.mouse;
   if (mouse) {
     const dx = input.mouse.x - tank.x, dy = input.mouse.y - tank.y;
-    tank.rot = normRot(Math.atan2(dy, dx) / D2R + 90);
-    forward = Math.hypot(dx, dy) > MOUSE_DEADZONE;
+    tank.rot = normRot(datan2(dy, dx) / D2R + 90);
+    forward = dhypot(dx, dy) > MOUSE_DEADZONE;
     backup = false; left = false; right = false;
   }
   let moveSize = 0, turnSize = 0;
@@ -189,8 +202,8 @@ export function moveTank(m, tank, input) {
   let x = tank.x, y = tank.y, rot = tank.rot;
   for (let k = 0; k < STEPS; k++) {
     rot += turnSize;
-    x += Math.cos((rot - 90) * D2R) * moveSize;
-    y += Math.sin((rot - 90) * D2R) * moveSize;
+    x += dcos((rot - 90) * D2R) * moveSize;
+    y += dsin((rot - 90) * D2R) * moveSize;
   }
   rot = normRot(rot);
   if (tankHitsWall(m, x, y, rot)) {
@@ -202,8 +215,8 @@ export function moveTank(m, tank, input) {
         if (tankHitsWall(m, x, y, rot)) { rot = pr; hitSomething = true; }
       }
       const px = x, py = y;
-      x += Math.cos((rot - 90) * D2R) * moveSize;
-      y += Math.sin((rot - 90) * D2R) * moveSize;
+      x += dcos((rot - 90) * D2R) * moveSize;
+      y += dsin((rot - 90) * D2R) * moveSize;
       if (moveSize > 0 && hitAny(m, p.front, x, y, rot)) { x = px; y = py; hitSomething = true; }
       else if (moveSize < 0 && hitAny(m, p.rear, x, y, rot)) { x = px; y = py; hitSomething = true; }
     }
@@ -217,7 +230,7 @@ export function moveTank(m, tank, input) {
 
 // Point-in-tank test (bullet centre vs tank body), used for hits.
 export function pointInTank(S, tank, x, y) {
-  const a = -tank.rot * D2R, c = Math.cos(a), s = Math.sin(a);
+  const a = -tank.rot * D2R, c = dcos(a), s = dsin(a);
   const dx = x - tank.x, dy = y - tank.y;
   const lx = dx * c - dy * s, ly = dx * s + dy * c;
   return Math.abs(lx) <= TANK_W * S / 2 && Math.abs(ly) <= TANK_L * S / 2;
@@ -229,9 +242,9 @@ export function makeBullet(m, tank, id) {
   const sp = BULLET_SPEED / BULLET_SUBSTEPS * S / 50;
   return {
     id, owner: tank.id,
-    x: tank.x + Math.cos(a) * S * BULLET_SPAWN,
-    y: tank.y + Math.sin(a) * S * BULLET_SPAWN,
-    vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+    x: tank.x + dcos(a) * S * BULLET_SPAWN,
+    y: tank.y + dsin(a) * S * BULLET_SPAWN,
+    vx: dcos(a) * sp, vy: dsin(a) * sp,
     life: BULLET_LIFETIME,
   };
 }
@@ -262,7 +275,7 @@ export function stepBullet(m, b, substeps = BULLET_SUBSTEPS) {
 
 function muzzle(m, tank) {
   const a = (tank.rot - 90) * D2R;
-  return { x: tank.x + Math.cos(a) * m.S * BULLET_SPAWN, y: tank.y + Math.sin(a) * m.S * BULLET_SPAWN, c: Math.cos(a), s: Math.sin(a) };
+  return { x: tank.x + dcos(a) * m.S * BULLET_SPAWN, y: tank.y + dsin(a) * m.S * BULLET_SPAWN, c: dcos(a), s: dsin(a) };
 }
 
 // Sight line shown while a tank holds the laser: a bouncing trace of
@@ -328,8 +341,11 @@ export class Game {
     this.crateTimer = 0;
   }
 
-  addPlayer(id, name, color) {
+  // nonce: random number chosen by the joining player. Mixed into the round
+  // seed so whoever runs the game can't pick future mazes/crates alone.
+  addPlayer(id, name, color, nonce = 0) {
     this.players.set(id, { id, name, color, score: 0 });
+    if (nonce) this.seedRng.setState(hashString(`${this.seedRng.getState()}:${nonce >>> 0}`));
     // Start a fresh round when a second player arrives (or the first).
     if (this.players.size <= 2) this.newRound();
   }
@@ -403,9 +419,9 @@ export class Game {
         break;
       }
       case 'frag':
-        if (t.fragFired) { if (t.lastFrag) this.detonate(t.lastFrag); }
+        if (t.fragFired) { const bomb = this.bullets.find(x => x.id === t.lastFrag); if (bomb) this.detonate(bomb); }
         else {
-          t.lastFrag = proj('frag', FRAG_SPEED, FRAG_SUBSTEPS, FRAG_LIFETIME, 0);
+          t.lastFrag = proj('frag', FRAG_SPEED, FRAG_SUBSTEPS, FRAG_LIFETIME, 0).id;
           t.fragFired = true;
           this.events.push({ type: 'fire', x: t.x, y: t.y });
         }
@@ -436,7 +452,7 @@ export class Game {
     for (let i = 0; i < FRAG_SHARDS; i++) {
       const a = (Math.floor(this.rand() * 360) - 90) * D2R;
       const sp = (FRAG_SPEED - this.rand() * FRAG_SPEED + 4) / FRAG_SUBSTEPS * S / 50;
-      this.bullets.push({ id: this.nextId++, kind: 'shard', owner: b.owner, x: b.x, y: b.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, substeps: FRAG_SUBSTEPS, life: SHARD_LIFETIME, deadly: 0 });
+      this.bullets.push({ id: this.nextId++, kind: 'shard', owner: b.owner, x: b.x, y: b.y, vx: dcos(a) * sp, vy: dsin(a) * sp, substeps: FRAG_SUBSTEPS, life: SHARD_LIFETIME, deadly: 0 });
     }
     this.events.push({ type: 'frag', x: b.x, y: b.y });
   }
@@ -463,7 +479,7 @@ export class Game {
         const S = this.maze.S, mz = muzzle(this.maze, t);
         const a = (t.rot - 90 + this.rand() * GATLING_SPREAD - GATLING_SPREAD / 2) * D2R;
         const sp = GATLING_SPEED / GATLING_SUBSTEPS * S / 50;
-        this.bullets.push({ id: this.nextId++, kind: 'gatling', owner: t.id, x: mz.x, y: mz.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, substeps: GATLING_SUBSTEPS, life: GATLING_LIFETIME, deadly: GATLING_SAFE });
+        this.bullets.push({ id: this.nextId++, kind: 'gatling', owner: t.id, x: mz.x, y: mz.y, vx: dcos(a) * sp, vy: dsin(a) * sp, substeps: GATLING_SUBSTEPS, life: GATLING_LIFETIME, deadly: GATLING_SAFE });
         this.events.push({ type: 'gshot' });
       }
     } else {
@@ -536,7 +552,7 @@ export class Game {
       if (aim) {
         b.vx += aim.x - b.x < 0 ? -acc : acc;
         b.vy += aim.y - b.y < 0 ? -acc : acc;
-        const sp = Math.hypot(b.vx, b.vy);
+        const sp = dhypot(b.vx, b.vy);
         if (sp > maxSp) { b.vx = b.vx / sp * maxSp; b.vy = b.vy / sp * maxSp; }
       }
     }
@@ -574,7 +590,7 @@ export class Game {
   checkCrates() {
     const S = this.maze.S;
     this.crates = this.crates.filter(c => {
-      const a = c.rot * D2R, co = Math.cos(a), si = Math.sin(a), h = CRATE_HALF * S;
+      const a = c.rot * D2R, co = dcos(a), si = dsin(a), h = CRATE_HALF * S;
       const corners = [[-h, -h], [-h, h], [h, h], [h, -h]].map(([x, y]) => [c.x + x * co - y * si, c.y + x * si + y * co]);
       for (const t of this.tanks.values()) {
         if (!t.alive || t.weapon !== 'bullet') continue;
@@ -689,6 +705,32 @@ export class Game {
       players: [...this.players.values()].map(p => [p.id, p.name, p.color, p.score]),
     };
   }
+
+  // Complete game state as plain JSON (maze is rebuilt from its seed).
+  serialize() {
+    return {
+      settings: this.settings, seed: this.seedRng.getState(), rand: this.rand.getState(),
+      tick: this.tick, round: this.round, nextId: this.nextId, frozen: this.frozen, endCount: this.endCount, crateTimer: this.crateTimer,
+      maze: this.maze && this.maze.seed,
+      players: [...this.players.values()], tanks: [...this.tanks.values()],
+      bullets: this.bullets, lasers: this.lasers, guns: this.guns, crates: this.crates,
+    };
+  }
+
+  static deserialize(st) {
+    const s = JSON.parse(JSON.stringify(st));
+    const g = new Game(0, s.settings);
+    g.seedRng.setState(s.seed); g.rand.setState(s.rand);
+    Object.assign(g, { tick: s.tick, round: s.round, nextId: s.nextId, frozen: s.frozen, endCount: s.endCount, crateTimer: s.crateTimer,
+      bullets: s.bullets, lasers: s.lasers, guns: s.guns, crates: s.crates });
+    g.maze = s.maze == null ? null : generateMaze(s.maze);
+    g.players = new Map(s.players.map(p => [p.id, p]));
+    g.tanks = new Map(s.tanks.map(t => [t.id, t]));
+    return g;
+  }
+
+  // Fingerprint of the full state; equal on every machine running the same game.
+  hash() { return hashString(JSON.stringify(this.serialize())); }
 
   drainEvents() { const e = this.events; this.events = []; return e; }
 }
