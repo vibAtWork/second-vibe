@@ -237,6 +237,7 @@ const audio = (() => {
     missile: () => { noise(0.3, 0.08); tone(260, 0.3, 'triangle', 0.04, 2); },
     lock: () => { tone(1200, 0.06, 'sine', 0.03); setTimeout(() => tone(1500, 0.06, 'sine', 0.03), 80); },
     crate: () => tone(200, 0.12, 'triangle', 0.05, 0.6),
+    shard: () => tone(2400 + Math.random() * 800, 0.025, 'square', 0.012, 0.5),
     pickup: () => { tone(660, 0.07, 'square', 0.03); setTimeout(() => tone(990, 0.09, 'square', 0.03), 70); } };
 })();
 addEventListener('pointerdown', () => audio.unlock());
@@ -248,16 +249,31 @@ function playerColor(id) { const p = latest && latest.players.find(p => p[0] ===
 function handleEvent(ev) {
   if (ev.type === 'fire') audio.fire();
   else if (ev.type === 'bounce') audio.bounce();
-  else if (ev.type === 'poof') { audio.poof(); burst(ev.x, ev.y, '#999', 5, 0.6); }
+  else if (ev.type === 'poof') { audio.poof(); for (let i = 0; i < 6; i++) smoke(ev.x, ev.y, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8, '#bbb', 1.5, 0.12, 0.5); }
   else if (ev.type === 'boom') {
+    addShake(4);
     audio.boom();
     burst(ev.x, ev.y, playerColor(ev.victim), 26, 2.2);
     burst(ev.x, ev.y, '#f6a623', 14, 1.6);
   } else if (ev.type === 'win') banner = { text: `${playerName(ev.id)} wins the round!`, color: playerColor(ev.id), until: performance.now() + 2000 };
   else if (['laser', 'spin', 'gshot', 'missile', 'lock', 'crate', 'pickup'].includes(ev.type)) audio[ev.type]();
-  else if (ev.type === 'frag') { audio.frag(); burst(ev.x, ev.y, '#555', 18, 1.8); burst(ev.x, ev.y, '#f6a623', 10, 1.2); }
+  else if (ev.type === 'frag') {
+    audio.frag(); addShake(7);
+    burst(ev.x, ev.y, '#f6a623', 10, 1.2);
+    for (let i = 0; i < 10; i++) { const g = 60 + (Math.random() * 70 | 0); smoke(ev.x + (Math.random() - 0.5) * 6, ev.y + (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 2.2, (Math.random() - 0.5) * 2.2, `rgb(${g},${g},${g})`, 4 + Math.random() * 3, 0.25, 0.7); }
+  }
+  else if (ev.type === 'shardwall') { if (Math.random() < 0.5) audio.shard(); }
   else if (ev.type === 'draw') banner = { text: 'Draw!', color: '#555', until: performance.now() + 2000 };
 }
+
+// Soft smoke puff: grows and fades, drawn beneath tanks and projectiles.
+const smokes = [];
+function smoke(x, y, vx, vy, color, size, grow, alpha) {
+  if (smokes.length > 600) smokes.shift();
+  smokes.push({ x, y, vx, vy, color, size, grow, a: alpha, fade: alpha / (10 + Math.random() * 8) });
+}
+let shake = 0;
+function addShake(n) { shake = Math.min(8, shake + n); }
 
 function burst(x, y, color, n, speed) {
   for (let i = 0; i < n; i++) {
@@ -400,11 +416,14 @@ const crateBorn = new Map();
 
 function drawProjectile(S, b) {
   const br = Math.max(1.6, S * 0.05);
-  if (b.kind === 3) { // frag shard: small spinning sliver, fades out
-    ctx.globalAlpha = Math.max(0, b.life / 20);
-    ctx.fillStyle = '#333';
-    ctx.fillRect(b.x - br * 0.6, b.y - br * 0.6, br * 1.2, br * 1.2);
-    ctx.globalAlpha = 1;
+  if (b.kind === 3) { // frag shard: a jagged sliver that spins and fades; passes through walls
+    const spin = ((b.id * 47) % 360 + performance.now() * (b.id % 2 ? 0.6 : -0.6)) * Math.PI / 180;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, b.life / 20));
+    ctx.translate(b.x, b.y); ctx.rotate(spin);
+    ctx.fillStyle = '#3a3a3a';
+    ctx.beginPath(); ctx.moveTo(-br * 1.4, -br * 0.3); ctx.lineTo(br * 0.2, -br * 0.8); ctx.lineTo(br * 1.3, br * 0.2); ctx.lineTo(-br * 0.3, br * 0.6); ctx.closePath(); ctx.fill();
+    ctx.restore();
   } else if (b.kind === 2) { // frag bomb
     ctx.fillStyle = '#222';
     ctx.beginPath(); ctx.arc(b.x, b.y, br * 1.8, 0, Math.PI * 2); ctx.fill();
@@ -416,7 +435,16 @@ function drawProjectile(S, b) {
     ctx.fillStyle = '#444'; ctx.fillRect(-br * 2.2, -br * 0.7, br * 3.4, br * 1.4);
     ctx.fillStyle = '#d33'; ctx.beginPath(); ctx.moveTo(br * 1.2, -br * 0.7); ctx.lineTo(br * 2.4, 0); ctx.lineTo(br * 1.2, br * 0.7); ctx.fill();
     ctx.restore();
-    if (Math.random() < 0.6) particles.push({ x: b.x - Math.cos(a) * br * 2, y: b.y - Math.sin(a) * br * 2, vx: (Math.random() - 0.5) * 0.4, vy: (Math.random() - 0.5) * 0.4, life: 0.6, color: '#aaa', size: br * 1.2 });
+    // Smoke trail: grey while flying blind; once locked on, about half the puffs
+    // take the colour of the tank being hunted, so everyone can see who it's after.
+    const target = b.life; // homing target id (0 = not locked yet)
+    for (let k = 0; k < 2; k++) {
+      const tinted = target && Math.random() < 0.5;
+      const g = 150 + (Math.random() * 60 | 0);
+      smoke(b.x - Math.cos(a) * br * 2.2, b.y - Math.sin(a) * br * 2.2,
+        -Math.cos(a) * 0.5 + (Math.random() - 0.5) * 0.5, -Math.sin(a) * 0.5 + (Math.random() - 0.5) * 0.5,
+        tinted ? playerColor(target) : `rgb(${g},${g},${g})`, br * (tinted ? 1.3 : 1.1), 0.05, tinted ? 0.75 : 0.55);
+    }
   } else { // cannon ball / gatling round
     ctx.fillStyle = '#222';
     ctx.beginPath(); ctx.arc(b.x, b.y, b.kind === 1 ? br * 0.75 : br, 0, Math.PI * 2); ctx.fill();
@@ -433,15 +461,27 @@ function drawLaser(S, L) {
   ctx.lineCap = 'butt';
 }
 
+// Laser sight: the bouncing trace is redrawn every frame in short pieces,
+// each shown with ~70% chance, so it shimmers like a live beam.
 function drawAimer(S, tank, all) {
   const pts = traceAimer(maze, tank, all);
+  const col = playerColor(tank.id);
+  const piece = Math.max(2, S * 0.08);
   ctx.save();
-  ctx.setLineDash([S * 0.06, S * 0.06]);
-  ctx.strokeStyle = playerColor(tank.id) + 'aa';
-  ctx.lineWidth = Math.max(0.8, S * 0.02);
-  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
-  for (const p of pts.slice(1)) ctx.lineTo(p[0], p[1]);
-  ctx.stroke();
+  ctx.lineCap = 'round';
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+    const len = Math.hypot(x1 - x0, y1 - y0), n = Math.max(1, Math.round(len / piece));
+    for (let k = 0; k < n; k++) {
+      if (Math.random() > 0.7) continue;
+      const ax = x0 + (x1 - x0) * k / n, ay = y0 + (y1 - y0) * k / n;
+      const bx = x0 + (x1 - x0) * (k + 1) / n, by = y0 + (y1 - y0) * (k + 1) / n;
+      ctx.strokeStyle = col + '40'; ctx.lineWidth = Math.max(2, S * 0.07);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.8, S * 0.025);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    }
+  }
   ctx.restore();
 }
 
@@ -489,8 +529,17 @@ function render() {
     return;
   }
   ctx.save();
+  if (shake > 0.05) { ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake *= 0.9; } else shake = 0;
   ctx.translate(maze.ox, maze.oy);
   drawMaze(maze);
+  for (let i = smokes.length - 1; i >= 0; i--) {
+    const p = smokes[i];
+    p.x += p.vx; p.y += p.vy; p.vx *= 0.93; p.vy *= 0.93; p.size += p.grow; p.a -= p.fade;
+    if (p.a <= 0) { smokes.splice(i, 1); continue; }
+    ctx.globalAlpha = p.a; ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
   const st = interpState();
   const mine = new Map(seats.filter(s => s.id != null).map(s => [s.id, s]));
   if (st) {

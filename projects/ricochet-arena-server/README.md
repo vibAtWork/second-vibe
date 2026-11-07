@@ -70,10 +70,10 @@ holding one. The four weapons are the original's default crate set:
 
 | Weapon | How it works |
 |---|---|
-| **Laser** | While held, a dashed sight line shows the bouncing path (200 px at scale 50, stops at a tank). Fire to shoot a beam that travels 70 px per frame for 8 frames, ricocheting off walls. Its first 7 px are harmless. Your tank can't move while the beam is live. |
-| **Frag bomb** | Fire launches a bouncing bomb (same speed as a cannon ball). Press fire again to burst it into 40 shards flying in random directions at 4–8.5 px/frame. Shards fade after 20 frames and only creep through walls. The bomb also bursts when its 10 s run out, when it hits a tank (killing it), or if its owner dies. |
+| **Laser** | While held, a flickering sight line shows the bouncing path (200 px at scale 50, stops at a tank). Fire to shoot a beam that travels 70 px per frame for 8 frames, ricocheting off walls. Its first 7 px are harmless. Your tank can't move while the beam is live. |
+| **Frag bomb** | Fire launches a bouncing bomb (same speed as a cannon ball). Press fire again to burst it into 40 shards flying in random directions at 4–8.5 px/frame. Shards fly straight through walls (they never bounce) and fade after 20 frames, with a smoke cloud and screen shake on the burst. The bomb also bursts when its 10 s run out, when it hits a tank (killing it), or if its owner dies. |
 | **Gatling gun** | Hold fire: the barrels spin up for 10 frames, then fire every 3rd frame (20 rounds, ±5.5° spread, 5.5 px/frame, 5 s life, harmless for their first 2 frames). Release to stop; it spins down and you get your cannon back. |
-| **Homing missile** | Flies straight and bounces for 50 frames, then locks onto the nearest tank **by path through the maze** (which can be you). It steers toward the next cell on the shortest path. Lasts 10 s. |
+| **Homing missile** | Flies straight and bounces for 50 frames, then locks onto the nearest tank **by path through the maze** (which can be you). Its smoke trail is grey until it locks on, then about half the puffs take the hunted tank's colour, so everyone can see who it's after. It steers toward the next cell on the shortest path. Lasts 10 s. |
 
 After a weapon is used up, the tank goes back to the cannon.
 

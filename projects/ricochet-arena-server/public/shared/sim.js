@@ -543,13 +543,17 @@ export class Game {
     return bounces;
   }
 
-  // A shard stops for the rest of the frame when it touches a wall, so it
-  // creeps through walls slowly while fading (life = 20 frames).
+  // Frag shards fly straight through walls (no bouncing) while they fade
+  // out over 20 frames. Returns true if the shard entered a wall this frame.
   stepShard(b) {
+    const m = this.maze;
+    const wasIn = wallAt(m, b.x, b.y);
+    let entered = false;
     for (let i = 0; i < b.substeps; i++) {
       b.x += b.vx; b.y += b.vy;
-      if (wallAt(this.maze, b.x, b.y)) break;
+      if (!wasIn && !entered && wallAt(m, b.x, b.y)) entered = true;
     }
+    return entered;
   }
 
   spawnCrate() {
@@ -607,9 +611,10 @@ export class Game {
     this.lasers = this.lasers.filter(L => this.stepLaser(L));
 
     const survivors = [];
+    let shardHits = 0;
     for (const b of this.bullets) {
       if (b.dead) continue;
-      if (b.kind === 'shard') this.stepShard(b);
+      if (b.kind === 'shard') { if (this.stepShard(b)) shardHits++; }
       else if (b.kind === 'homing') { if (this.stepHoming(b)) this.events.push({ type: 'bounce' }); }
       else if (stepBullet(m, b, b.substeps)) this.events.push({ type: 'bounce' });
       let dead = false;
@@ -641,6 +646,7 @@ export class Game {
     // shards created by detonations this frame
     for (const b of this.bullets) if (!b.dead && !survivors.includes(b)) survivors.push(b);
     this.bullets = survivors;
+    if (shardHits) this.events.push({ type: 'shardwall', n: shardHits });
 
     if (--this.crateTimer <= 0) this.spawnCrate();
 
@@ -675,7 +681,8 @@ export class Game {
     return {
       t: 's', tick: this.tick, frozen: this.frozen, end: this.endCount,
       tanks: [...this.tanks.values()].map(t => [t.id, r2(t.x), r2(t.y), Math.round(t.rot * 1000) / 1000, t.alive ? 1 : 0, t.triggerReleased ? 1 : 0, t.bulletsFired, WEAPON_CODE[t.weapon], this.locked(t) ? 1 : 0, t.weapon === 'laser' && t.laserReady ? 1 : 0]),
-      bullets: this.bullets.map(b => [b.id, r2(b.x), r2(b.y), PROJ_CODE[b.kind], b.kind === 'shard' ? b.life : 0]),
+      // [id, x, y, kind, shard life | missile target id (0 = not homing yet / no target)]
+      bullets: this.bullets.map(b => [b.id, r2(b.x), r2(b.y), PROJ_CODE[b.kind], b.kind === 'shard' ? b.life : b.kind === 'homing' && b.homing && b.target ? b.target : 0]),
       lasers: this.lasers.map(L => [L.id, L.owner, L.trail.flat().map(r2)]),
       crates: this.crates.map(c => [c.id, r2(c.x), r2(c.y), Math.round(c.rot), WEAPON_CODE[c.weapon]]),
       guns: this.guns.map(g => [g.owner, g.spin]),

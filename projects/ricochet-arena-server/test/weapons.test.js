@@ -166,3 +166,44 @@ test('snapshot carries weapons, crates, lasers', () => {
   assert.deepEqual(s.crates[0].slice(3), [12, 2]);
   JSON.stringify(s);
 });
+
+test('frag shards fly straight through walls', () => {
+  const g = new Game(5, { crates: false });
+  g.addPlayer(1, 'a', '#f00');
+  g.maze = generateMaze(1, { W: 6, H: 5, openness: 0 }); // plenty of walls
+  g.frozen = 0;
+  const m = g.maze;
+  // a shard starting mid-cell heading right must cross the wall at the cell edge
+  const c = cellCenter(m, 1, 1);
+  const sp = 6 / 7 * m.S / 50;
+  g.bullets = [{ id: 1, kind: 'shard', owner: 1, x: c.x, y: c.y, vx: sp, vy: 0, substeps: 7, life: 20, deadly: 0 }];
+  Object.assign(g.tanks.get(1), cellCenter(m, 4, 4));
+  const vx0 = sp;
+  let crossed = false, sawWall = false;
+  for (let i = 0; i < 19; i++) {
+    g.step(new Map());
+    const evs = g.drainEvents();
+    if (evs.some(e => e.type === 'shardwall')) sawWall = true;
+    const b = g.bullets[0];
+    if (!b) break;
+    assert.equal(b.vx, vx0, 'never bounces');
+    if (b.x > c.x + m.S) crossed = true;
+  }
+  assert.ok(crossed, 'travelled more than a cell to the right');
+  assert.ok(sawWall || !m.v[2][1], 'reported wall contact for sound');
+});
+
+test('locked-on missile reports its target in snapshots (for coloured smoke)', () => {
+  const g = new Game(3, { crates: false });
+  g.addPlayer(1, 'a', '#f00'); g.addPlayer(2, 'b', '#00f');
+  g.maze = generateMaze(12, { W: 7, H: 5 });
+  g.frozen = 0;
+  Object.assign(g.tanks.get(1), cellCenter(g.maze, 0, 0), { rot: 180, weapon: 'homing' });
+  Object.assign(g.tanks.get(2), cellCenter(g.maze, 6, 4), { rot: 0 });
+  g.step(press(1));
+  const code = s => s.bullets.find(b => b[3] === 4);
+  assert.equal(code(g.snapshot())[4], 0, 'not locked during startup');
+  run(g, HOMING_STARTUP + 1);
+  const m = code(g.snapshot());
+  if (m) assert.ok([1, 2].includes(m[4]), 'target id present once homing');
+});

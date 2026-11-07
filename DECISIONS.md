@@ -10,3 +10,5 @@
 - **Crate pickup** uses the original rule (a crate corner inside the tank), plus "tank centre over the crate". The tank size is approximated, and without the extra rule a tank parked squarely on a crate turned 45° would miss it.
 - **Frag shards** follow the original's code path literally: on touching a wall a shard stops for the rest of that frame instead of bouncing, so it creeps slowly through walls while fading.
 - **Gatling rounds** start moving on the frame they're fired, like other projectiles.
+- **Frag shards pass through walls** (changed on the owner's feedback about the original). Earlier I read the code as making them stall at walls.
+- **Missile smoke**: grey before lock-on, then ~50% of puffs use the target's colour. The snapshot carries the target id for this.
