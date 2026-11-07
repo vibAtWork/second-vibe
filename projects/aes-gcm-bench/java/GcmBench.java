@@ -59,6 +59,7 @@ public class GcmBench {
             }
             for (String op : new String[]{"enc", "dec"}) {
                 for (int sz : sizes) {
+                    run(k, sz, op, Math.min(0.2, seconds)); // re-warm this exact path right before timing it
                     double[] r = run(k, sz, op, seconds);
                     System.out.printf("%s,%s,%d,%d,%d,%.6f,%.2f%n", impl, op, kb, sz, (long) r[0], r[1],
                             r[0] * sz / r[1] / 1e6);
