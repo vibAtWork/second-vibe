@@ -142,7 +142,7 @@ public class Report {
                 rowStyle.add("ratio");
             }
 
-        // best measured value per column among the real contenders (not the `openssl speed` ceiling)
+        // best measured value per column among the real contenders (not the `openssl speed` reference)
         double[] colBest = new double[sizes.size()];
         int ci = 0;
         for (int s : sizes) {
@@ -236,7 +236,9 @@ public class Report {
         println(" " + dim("OpenSSL EVP:        same steps as Java's Cipher.init+doFinal (key passed every message)."));
         println(" " + dim("EVP, key set once:  key set once, only the IV changes per message (tuned C usage)."));
         if (impls.contains(SPEED))
-            println(" " + dim("openssl speed:      OpenSSL's streaming loop with no per-message init; a ceiling, not a peer."));
+            println(" " + dim("openssl speed:      OpenSSL's own loop; what it redoes per message varies by version"
+                    + " (3.5: key + IV + 13 B AAD)."));
+        println(" " + dim("Why the numbers differ: see analysis/ANALYSIS.md."));
         println();
     }
 
@@ -252,7 +254,7 @@ public class Report {
         return switch (impl) {
             case JAVA_EVP -> "OpenSSL EVP";
             case NOREKEY -> "OpenSSL EVP, key set once";
-            case SPEED -> "openssl speed (ceiling)";
+            case SPEED -> "openssl speed";
             default -> impl;
         };
     }

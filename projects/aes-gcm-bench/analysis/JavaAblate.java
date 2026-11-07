@@ -7,6 +7,7 @@ import javax.crypto.spec.SecretKeySpec;
  *   same key     init(sameKey, iv) + doFinal       what the "Java" row does (key schedule cached)
  *   key changes  alternate between two keys        forces AES key expansion on every init
  *   init only    init(sameKey, iv), no doFinal     fixed cost of Cipher.init
+ * and finally the heap bytes allocated per message.
  * Run: java JavaAblate.java [seconds]
  */
 public class JavaAblate {
@@ -29,6 +30,24 @@ public class JavaAblate {
                 System.out.printf("%10.0f", bench(m, s, secs));
             }
             System.out.println();
+        }
+        // heap allocation per message (same key, 64 B), via the JDK's per-thread allocation counter
+        var mx = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+        long tid = Thread.currentThread().threadId();
+        Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
+        SecretKeySpec key = new SecretKeySpec(new byte[16], "AES");
+        byte[] in = new byte[64], out = new byte[80], iv = new byte[12];
+        int n = 200_000;
+        for (int pass = 0; pass < 2; pass++) {
+            long before = mx.getThreadAllocatedBytes(tid);
+            for (int i = 0; i < n; i++) {
+                iv[0] = (byte) i; iv[1] = (byte) (i >> 8); iv[2] = (byte) (i >> 16); iv[3] = (byte) pass;
+                c.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(128, iv));
+                sink += c.doFinal(in, 0, 64, out, 0);
+            }
+            if (pass == 1)
+                System.out.printf("heap allocated per message (64 B, same key): %d bytes%n",
+                        (mx.getThreadAllocatedBytes(tid) - before) / n);
         }
     }
 
