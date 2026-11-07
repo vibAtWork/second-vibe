@@ -156,3 +156,44 @@ test('anti-cheat can be set to report-only or off', () => {
     assert.equal(room.reports.length, 1);
   }
 });
+
+test('a short network hiccup keeps the tank moving (no stutter for honest players)', () => {
+  const spin = () => [8, 0, 0]; // turning right (can't be blocked by a wall for long)
+  const { room, list } = arena([['Wifi', spin], ['Wanda', wanderer]], { ticks: FRAMES_FROZEN + 20, seed: 6 });
+  const t = room.game.tanks.get(list[0].c.id);
+  room.seats.get(list[0].c.id).queue.length = 0;
+  const seen = new Set();
+  for (let k = 0; k < STARVE_TICKS - 1; k++) { room.tick(); seen.add(t.rot); } // ~1.5 s gap: still on the last input
+  assert.ok(seen.size > 10, 'tank kept turning through the gap');
+});
+
+test('a detector error never stops the game', () => {
+  const { room } = arena([['A', wanderer], ['B', wanderer]], { ticks: FRAMES_FROZEN + 5, seed: 7 });
+  room.watch.afterTick = () => { throw new Error('boom'); };
+  const tick0 = room.game.tick;
+  for (let k = 0; k < 10; k++) room.tick();
+  assert.equal(room.game.tick, tick0 + 10);
+  assert.equal(room.watch, null, 'detector switched itself off');
+});
+
+test('anti-cheat adds little time per tick, even in a full room', () => {
+  const players = Array.from({ length: 8 }, (_, i) => [`P${i}`, i % 2 ? humanAimer : wanderer]);
+  const time = anticheat => {
+    let clock = 0;
+    const room = new HostRoom({ seed: 9, anticheat, verifiable: true, now: () => clock });
+    const cs = players.map(([name], i) => { const c = { send: m => { if (m.t === 'joined') c.id = m.id; } }; room.addConn(c); room.handle(c, { t: 'join', name, nonce: i + 1 }); return c; });
+    const rs = cs.map((_, i) => rng(i + 5)), sts = cs.map(() => ({}));
+    let seq = 0;
+    const t0 = performance.now();
+    for (let k = 0; k < 2000; k++) {
+      clock += 40; seq++;
+      cs.forEach((c, i) => { const me = room.game.tanks.get(c.id); if (me?.alive && room.game.maze) room.handle(c, { t: 'in', id: c.id, f: [[seq, ...players[i][1](room.game, me, rs[i], sts[i])]] }); });
+      room.tick();
+    }
+    return (performance.now() - t0) / 2000;
+  };
+  const off = time('off'), on = time('kick');
+  console.log(`  ms per tick, 8 players: anti-cheat off ${off.toFixed(3)}, on ${on.toFixed(3)} (budget 40)`);
+  assert.ok(on < 4, 'well inside the 40 ms tick');
+  assert.ok(on - off < 2, 'detector costs < 2 ms per tick');
+});

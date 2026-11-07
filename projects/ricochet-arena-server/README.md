@@ -101,13 +101,14 @@ watches every seat on the server (and on a P2P host) without affecting the game:
 |---|---|---|
 | Impossible ricochet aim | every cannon shot is replayed on the server: would it kill an enemy after bouncing? | 8+ shots, ≥60% ricochet kills **and** ≥75% fired instantly → **kick**; ≥80% ricochet kills over 16+ shots → **kick**; ≥50% → flag |
 | Inhuman reactions | ticks from "a shot would kill now" to the trigger; ≤1 tick (40 ms) is instant | ≥80% instant over 8+ lethal shots → flag |
-| Mouse aimbot | the pointer jumps >120 px in one tick and lands on an enemy's centre | 10 in 60 s → **kick**; 5 → flag |
+| Mouse aimbot | the pointer jumps >120 px in one tick and lands on an enemy's centre | 15 in 60 s → **kick**; 6 → flag |
 | Scripted input | buttons change on more than half the ticks for 15 s straight | flag |
 | Speed hack attempt | input frames keep arriving faster than real time (they're dropped anyway) | flag |
-| Lag switch | inputs stop arriving | tank idles after 8 ticks instead of repeating the last input |
+| Lag switch | inputs stop arriving | tank keeps its last input through hiccups; idles only after 1.5 s of silence |
 
-A kicked player sees why, everyone else sees "<name> was removed (reason)", and their address
-can't reconnect for 10 minutes. Flags never affect play. They go to the server log and to
+A kicked player sees why, and everyone else sees "<name> was removed (reason)". Address bans
+are **off** by default, because friends and family often share one IP and a bot is simply
+detected again. Set `BAN_MINUTES` to enable them. Flags never affect play. They go to the server log and to
 `GET /admin/reports?token=…`, which only exists when `ADMIN_TOKEN` is set.
 
 Configure with environment variables:
@@ -116,7 +117,20 @@ Configure with environment variables:
 docker run -d -p 8080:8080 -e ANTICHEAT=kick -e ADMIN_TOKEN=change-me ghcr.io/vibatwork/ricochet-arena:latest
 ```
 
-`ANTICHEAT` is `kick` (default), `flag` (report only) or `off`.
+`ANTICHEAT` is `kick` (default), `flag` (report only) or `off`. `BAN_MINUTES` (default 0) bans a kicked player's address.
+
+### Never at the expense of honest play
+
+* **Isolated:** the detector only reads the game. If it ever throws an error it switches itself
+  off and logs why, and the game carries on.
+* **Cheap:** about 0.05 ms per tick for 8 players on the server (a tick is 40 ms). If it ever
+  takes more than 3 ms, it runs on fewer ticks instead of delaying the game.
+* **No false kicks by design:** kicks need overwhelming evidence over many shots; anything
+  borderline is only a report. 12 simulated games of human-style players produce zero reports.
+* **Network-friendly:** inputs that stop briefly are bridged with the last input, exactly as
+  before. Only 1.5 s of silence idles a tank.
+* **P2P:** a host whose tab freezes or lags is never treated as a cheater. That needs a host that
+  keeps sending game updates while withholding the audit log.
 
 **How the thresholds were checked:** `test/behaviour.test.js` runs 12 full games of simulated
 human-style players (wanderers, aimers with 5–10 tick reactions, smooth mouse users) and

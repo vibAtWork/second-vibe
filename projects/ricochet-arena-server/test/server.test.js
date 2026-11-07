@@ -39,10 +39,13 @@ test('two clients join a room, see each other, and server movement matches local
     const ack0 = a.snap.ack[a.id] || 0;
     // Send 10 frames of "forward + turn right", one per tick.
     const pred = { x: t0[1], y: t0[2], rot: t0[3] };
+    // Send each frame right after a server tick, so it is queued before the next one
+    // (timer-paced sends can arrive late, and the server then rightly repeats the last input).
     for (let i = 1; i <= 10; i++) {
+      const tick = a.snap.tick;
+      await until(() => a.snap.tick > tick);
       a.send({ t: 'in', id: a.id, f: [[ack0 + i, 1 | 8, 0, 0]] });
       moveTank(a.maze, pred, { f: 1, r: 1 });
-      await wait(40);
     }
     await until(() => (a.snap.ack[a.id] || 0) >= ack0 + 10);
     // Stop sending; server repeats last input until we send idle, so send idle now
@@ -92,7 +95,7 @@ test('static files are served', async () => {
 });
 
 test('admin reports need the token; a kicked cheater is banned from reconnecting', async () => {
-  const srv = await createServer({ port: 0, log: () => {}, adminToken: 'secret' });
+  const srv = await createServer({ port: 0, log: () => {}, adminToken: 'secret', banMinutes: 10 });
   try {
     assert.equal((await fetch(`http://localhost:${srv.port}/admin/reports`)).status, 404);
     assert.equal((await fetch(`http://localhost:${srv.port}/admin/reports?token=nope`)).status, 404);
@@ -110,5 +113,22 @@ test('admin reports need the token; a kicked cheater is banned from reconnecting
     const again = new WebSocket(`ws://localhost:${srv.port}/ws?room=ban`);
     const code = await new Promise(res => again.on('close', c => res(c)));
     assert.equal(code, 4003);
+  } finally { srv.close(); }
+});
+
+test('by default a kick does not ban the address (shared home networks)', async () => {
+  const srv = await createServer({ port: 0, log: () => {} });
+  try {
+    const a = client(srv.port, 'nob');
+    await a.open;
+    a.send({ t: 'join', name: 'Sibling1', slot: 'arrows' });
+    await until(() => a.id);
+    srv.rooms.get('nob').onVerdict(a.id, 'kick', 'test verdict', {});
+    await until(() => a.msgs.some(m => m.t === 'kicked'));
+    const b = client(srv.port, 'nob'); // same address, different person
+    await b.open;
+    b.send({ t: 'join', name: 'Sibling2', slot: 'arrows' });
+    await until(() => b.id);
+    assert.ok(b.id);
   } finally { srv.close(); }
 });

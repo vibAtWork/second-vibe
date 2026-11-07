@@ -161,8 +161,10 @@ test('host that replaces a guest nonce (seed grinding) or kicks silently is caug
   assert.match(a2.cheats[0], /removed my tank/);
 });
 
-test('host that stops publishing audit data is flagged as stale', () => {
+test('host that keeps playing but stops publishing audit data is flagged; a frozen host is not', () => {
   const { room, a, b } = honestSetup();
   play(room, [a, b], 5);
-  assert.equal(a.a.stale(performance.now() + 10000), true);
+  const later = performance.now() + 10000;
+  assert.equal(a.a.stale(later, later - 100), true, 'snapshots still arriving, no audit log');
+  assert.equal(a.a.stale(later, later - 9000), false, 'host frozen (tab suspended): just lag, not cheating');
 });

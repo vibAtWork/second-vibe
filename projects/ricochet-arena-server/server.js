@@ -13,10 +13,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 const MAX_ROOMS = 500;
-const BAN_MS = 10 * 60 * 1000; // a kicked cheater's address can't reconnect for 10 minutes
+// Address bans are off by default: friends and family often share one IP, and a
+// kicked bot gets detected again anyway. Opt in with banMinutes / BAN_MINUTES.
 
 // anticheat: 'kick' | 'flag' | 'off'. adminToken: enables GET /admin/reports?token=...
-export function createServer({ port = 8080, log = console.log, anticheat = 'kick', adminToken = '' } = {}) {
+export function createServer({ port = 8080, log = console.log, anticheat = 'kick', adminToken = '', banMinutes = 0 } = {}) {
   const bans = new Map(); // remote address -> banned until (ms)
   const banned = ip => { const until = bans.get(ip); if (until && until > Date.now()) return true; bans.delete(ip); return false; };
 
@@ -54,7 +55,7 @@ export function createServer({ port = 8080, log = console.log, anticheat = 'kick
     if (!room) {
       room = new HostRoom({
         anticheat, log: m => log(`[${roomName}] ${m}`),
-        onKick: kickedConn => { bans.set(kickedConn.ip, Date.now() + BAN_MS); setTimeout(() => kickedConn.kick(), 500); },
+        onKick: kickedConn => { if (banMinutes > 0) bans.set(kickedConn.ip, Date.now() + banMinutes * 60000); setTimeout(() => kickedConn.kick(), 500); },
       });
       rooms.set(roomName, room);
     }
@@ -97,5 +98,5 @@ export function createServer({ port = 8080, log = console.log, anticheat = 'kick
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const port = +(process.env.PORT || 8080);
-  createServer({ port, anticheat: process.env.ANTICHEAT || 'kick', adminToken: process.env.ADMIN_TOKEN || '' }).then(({ port }) => console.log(`Ricochet Arena running at http://localhost:${port}`));
+  createServer({ port, anticheat: process.env.ANTICHEAT || 'kick', adminToken: process.env.ADMIN_TOKEN || '', banMinutes: +(process.env.BAN_MINUTES || 0) }).then(({ port }) => console.log(`Ricochet Arena running at http://localhost:${port}`));
 }

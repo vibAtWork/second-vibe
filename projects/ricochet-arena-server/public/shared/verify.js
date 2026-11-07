@@ -93,6 +93,10 @@ export class Auditor {
     if (h !== msg.h) this.fail(`game state differs from the rules at tick ${msg.tick}`);
   }
 
-  // Host must keep publishing while it sends snapshots.
-  stale(nowMs, limitMs = 3000) { return !!this.game && !this.failed && nowMs - this.lastLogAt > limitMs; }
+  // Cheating only if the host keeps sending game snapshots but stops publishing
+  // the audit log. A host that freezes entirely (tab suspended, machine busy) just
+  // lags; that is not cheating.
+  stale(nowMs, lastSnapshotMs, limitMs = 5000) {
+    return !!this.game && !this.failed && nowMs - this.lastLogAt > limitMs && nowMs - lastSnapshotMs < 1000;
+  }
 }

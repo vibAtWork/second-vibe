@@ -18,3 +18,10 @@
 - **Refactor:** a protocol field list replaces positional indexing; one `busy` flag replaces four weapon flags; a `PROJECTILES` table plus `spawn()`; the client is split into game-client/render/audio/transport. JS went from 3,042 to 1,926 lines across both projects, with anti-cheat added.
 - **Server-side behavioural anti-cheat** (`anticheat.js`): shots are judged by replaying them in the deterministic sim (ricochet kills + reaction ticks). Mouse snaps are measured as pointer jump distance, not aim angle: angle-based detection falsely flagged a smooth mouse player when the pointer passed near their own tank or they respawned. Defaults are conservative and validated against 12 simulated human games with zero flags. Kicks need two independent strong signals (or one overwhelming one). Kicked addresses get a 10-minute ban. `ANTICHEAT=kick|flag|off`; `/admin/reports` only with `ADMIN_TOKEN`.
 - **Lag switch**: a seat with no input for 8 ticks idles instead of repeating its last input. The P2P auditor accepts that idle frame.
+- **Anti-cheat must not hurt honest play** (owner's requirement), so:
+  - the detector is isolated with try/catch (it disables itself, never the game) and has a 3 ms budget with tick skipping; measured at about 0.05 ms per tick
+  - address bans are off by default (shared home IPs)
+  - starvation idle moved from 8 to 38 ticks (1.5 s), so Wi-Fi hiccups don't stutter
+  - mouse-snap kick limit raised to 15 per minute
+  - a P2P host is called stale only if snapshots keep coming without audit logs (a frozen tab is lag, not cheating)
+  - the flaky network test was fixed to send in step with server ticks (it was timer jitter, not a game bug)

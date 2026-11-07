@@ -11,8 +11,10 @@
 //    tick is published as {ops, inputs, state hash} so peers can re-run and audit it
 //  * behavioural detection (anticheat.js) flags or kicks bots and aim assistance;
 //    kicked connections can't rejoin the room
-//  * a seat whose inputs stop arriving goes idle after STARVE_TICKS instead of
-//    repeating its last input (no "hold forward and pull the cable")
+//  * a seat whose inputs stop arriving for STARVE_TICKS (1.5 s, far longer than a
+//    Wi-Fi hiccup) goes idle instead of repeating its last input forever
+//  * none of the anti-cheat may hurt honest play: the detector is isolated (an
+//    error disables it, never the game) and throttles itself if it gets slow
 import { Game, VIEW_W, VIEW_H } from './sim.js';
 import { CheatWatch } from './anticheat.js';
 
@@ -22,7 +24,8 @@ export const MAX_SEATS_PER_CONN = 3;
 export const MAX_PLAYERS = 8;
 export const MAX_FRAMES_PER_MSG = 8;
 const RATE = { capacity: 150, perSec: 120, kickAfterDrops: 600 };
-export const STARVE_TICKS = 8; // ~1/3 s without input -> tank goes idle
+export const STARVE_TICKS = 38; // ~1.5 s without input -> tank goes idle (short hiccups keep the last input)
+const DETECTOR_BUDGET_MS = 3;   // detector time per tick before it starts skipping ticks
 const IDLE = [0, 0, 0];
 
 // Wire input -> normalised [bits, mx, my] for a seat's scheme (or null if invalid).
@@ -91,6 +94,20 @@ export class HostRoom {
     this.seats.delete(id);
     this.watch?.forget(id);
     this.ops.push(['remove', id]);
+  }
+
+  // The detector is an observer: it must never break or slow the game.
+  runDetector(g, used, ev) {
+    if (!this.watch) return;
+    if (this.detectorSkip > 0) { this.detectorSkip--; return; }
+    const t0 = this.now();
+    try { this.watch.afterTick(g, used, ev); } catch (e) {
+      this.log(`anti-cheat disabled after an internal error: ${e && e.message}`);
+      this.watch = null;
+      return;
+    }
+    // Over budget (huge room, slow host machine): run on fewer ticks rather than delay the game.
+    if (this.now() - t0 > DETECTOR_BUDGET_MS) this.detectorSkip = 2;
   }
 
   onVerdict(id, level, reason, evidence) {
@@ -196,7 +213,7 @@ export class HostRoom {
     }
     g.step(inputs);
     const ev = kicked.concat(g.drainEvents());
-    this.watch?.afterTick(g, used, ev);
+    this.runDetector(g, used, ev);
     if (g.maze && g.maze.seed !== this.lastMazeSeed) {
       this.lastMazeSeed = g.maze.seed;
       const mm = this.mazeMsg();

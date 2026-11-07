@@ -28,8 +28,8 @@ export const LIMITS = {
   snapJump: 120,         // mouse pointer jumping this far (px) in one tick...
   snapOnTarget: 0.2,     // ...landing within this many cells of an enemy's centre
   snapWindow: 1500,      // 60 s
-  snapFlag: 5,
-  snapKick: 10,
+  snapFlag: 6,
+  snapKick: 15,
   overflowWindow: 250,   // 10 s
   overflowFlag: 50,      // input frames dropped for arriving faster than real time
 };

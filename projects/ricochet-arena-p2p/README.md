@@ -62,7 +62,8 @@ room code. The host could run modified code, so **every guest audits it**:
   * its join carried its own random nonce, which is mixed into the round seed so the host
     can't choose mazes or crate drops alone
   * it wasn't silently removed
-  * the host keeps publishing
+  * the host keeps publishing the audit log while it sends game updates (a host whose tab
+    freezes or lags is never treated as cheating)
 * On any failure the guest stops and shows "Cheating detected" with the reason.
 
 The host also runs the server's behavioural bot detection on its guests (see the server README). Kicks are announced and visible in the audit log, so a guest can tell an anti-cheat kick apart from a silent one.

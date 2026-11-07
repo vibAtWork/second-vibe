@@ -127,8 +127,10 @@ export function startClient(createTransport) {
   };
   const onMessage = m => { if (m && handlers[m.t]) handlers[m.t](m); };
 
+  let lastSnapAt = 0;
   function onSnapshot(s) {
     const now = performance.now();
+    lastSnapAt = now;
     latest = s;
     snaps.push(s);
     if (snaps.length > 40) snaps.shift();
@@ -200,7 +202,7 @@ export function startClient(createTransport) {
     if (now - lastTick > 500) lastTick = now;
   }, 5);
   setInterval(() => net.send({ t: 'ping', c: performance.now() }), 2000);
-  setInterval(() => { if (auditor.stale(performance.now())) auditor.fail('host stopped publishing audit data'); }, 1000);
+  setInterval(() => { if (auditor.stale(performance.now(), lastSnapAt)) auditor.fail('host stopped publishing audit data'); }, 1000);
 
   // ---- interpolation of remote objects between the two snapshots around render time
   function interpolated() {
