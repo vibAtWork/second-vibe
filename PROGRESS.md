@@ -9,3 +9,4 @@
 | 2026-11-07 | Java FF1 (JCE + BigInteger) + JUnit + bench (BouncyCastle baseline) | done, tests pass | projects/ff1/java |
 | 2026-11-07 | Elixir FF1 (:crypto + integers) + ExUnit + bench | done, tests pass | projects/ff1/elixir |
 | 2026-11-07 | Benchmark driver with cross-implementation ciphertext check | done | projects/ff1/bench |
+| 2026-11-07 | Full benchmark run (3 rounds, 18.7 min), README with final tables, SUMMARY.md | done | projects/ff1/results, projects/ff1/README.md |
