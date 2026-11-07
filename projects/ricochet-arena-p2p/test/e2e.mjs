@@ -24,11 +24,11 @@ const waitFor = (p, fn, ms = 15000) => p.waitForFunction(fn, null, { timeout: ms
 
 try {
   const a = await page('A');
-  await waitFor(a, () => window.__ra.isHost === true);
+  await waitFor(a, () => window.__ra.net.isHost === true);
   check(true, 'first browser became host');
   const b = await page('B');
   await waitFor(b, () => /connected to host/.test(document.getElementById('status').textContent));
-  check(await b.evaluate(() => !window.__ra.isHost), 'second browser joined as guest');
+  check(await b.evaluate(() => !window.__ra.net.isHost), 'second browser joined as guest');
 
   await a.fill('#name', 'Host'); await a.click('#join');
   await b.fill('#name', 'Guest'); await b.click('#join');
@@ -37,26 +37,38 @@ try {
 
   // Guest drives; verify host sees guest movement and guest prediction == host state.
   const gid = await b.evaluate(() => window.__ra.seats[0].id);
-  const start0 = await a.evaluate(id => window.__ra.latest.tanks.find(t => t[0] === id), gid);
+  const tankOn = (p, id) => p.evaluate(id => { const t = window.__ra.latest.tankById.get(id); return t && [t.id, t.x, t.y, t.rot, t.alive]; }, id);
+  const start0 = await tankOn(a, gid);
   await b.click('canvas');
   await b.keyboard.down('ArrowUp'); await b.keyboard.down('ArrowLeft');
   await sleep(600);
   await b.keyboard.up('ArrowLeft'); await b.keyboard.up('ArrowUp');
   await sleep(500);
-  const onHost = await a.evaluate(id => window.__ra.latest.tanks.find(t => t[0] === id), gid);
+  const onHost = await a.evaluate(id => { const t = window.__ra.net.hostRoom.game.tanks.get(id); return [t.id, t.x, t.y, t.rot]; }, gid);
   const pred = await b.evaluate(() => window.__ra.seats[0].pred);
   check(onHost[1] !== start0[1] || onHost[2] !== start0[2] || onHost[3] !== start0[3], 'host sees guest tank move');
   check(Math.abs(pred.x - onHost[1]) < 0.05 && Math.abs(pred.y - onHost[2]) < 0.05, `guest prediction matches host (${pred.x.toFixed(2)},${pred.y.toFixed(2)} vs ${onHost[1]},${onHost[2]})`);
 
   await b.keyboard.press('KeyM');
-  await waitFor(a, () => window.__ra.latest.bullets.length > 0 || window.__ra.latest.tanks.some(t => !t[4]), 3000).then(() => check(true, 'guest shot reached host'), () => check(false, 'guest shot reached host'));
+  await waitFor(a, () => window.__ra.latest.bullets.length > 0 || window.__ra.latest.tanks.some(t => !t.alive), 3000).then(() => check(true, 'guest shot reached host'), () => check(false, 'guest shot reached host'));
   if (out) { await a.screenshot({ path: out + '/p2p-host.png' }); await b.screenshot({ path: out + '/p2p-guest.png' }); }
 
-  // Host migration: close host page; guest should take over hosting and keep playing.
+  // Honest host so far: the guest's auditor must not have complained.
+  check(await b.evaluate(() => window.__ra.cheat === null), 'guest audited an honest host with no false alarm');
+
+  // A cheating host (edits its game state, e.g. teleports its tank) is caught by the guest.
+  const hid = await a.evaluate(() => window.__ra.seats[0].id);
+  await a.evaluate(id => { const t = window.__ra.net.hostRoom.game.tanks.get(id); if (t) t.x += 4; else window.__ra.net.hostRoom.game.crateTimer += 7; }, hid);
+  await waitFor(b, () => window.__ra.cheat !== null, 5000).then(() => {}, () => {});
+  const reason = await b.evaluate(() => window.__ra.cheat);
+  check(/differs/.test(reason || ''), `guest detected the cheating host (${reason})`);
+
+  // Host migration: close host page; a new guest should take over hosting and keep playing.
+  const c = await page('C');
+  await waitFor(c, () => /connected to host/.test(document.getElementById('status').textContent));
   await a.close();
-  for (let i = 0; i < 6 && process.env.DEBUG; i++) { await sleep(2000); console.log('status:', await b.evaluate(() => document.getElementById('status').textContent + ' host=' + window.__ra.isHost + ' tanks=' + (window.__ra.latest && window.__ra.latest.tanks.length))); }
-  await waitFor(b, () => window.__ra.isHost === true && window.__ra.latest && window.__ra.latest.tanks.length === 1, 20000);
-  check(true, 'guest took over as host after host left');
+  await waitFor(c, () => window.__ra.net.isHost === true, 20000);
+  check(await c.evaluate(() => window.__ra.cheat === null), 'guest took over as host after host left, no false alarm');
 } catch (e) {
   check(false, 'exception: ' + e.message);
 } finally {

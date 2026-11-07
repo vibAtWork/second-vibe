@@ -6,7 +6,8 @@
   "private": true,
   "scripts": {
     "start": "node dev-server.js",
-    "test": "node --test test/*.test.js",
+    "build": "node build.mjs",
+    "test": "node --test ../ricochet-arena-server/test/sim.test.js ../ricochet-arena-server/test/weapons.test.js ../ricochet-arena-server/test/anticheat.test.js",
     "e2e": "node test/e2e.mjs"
   },
   "devDependencies": {

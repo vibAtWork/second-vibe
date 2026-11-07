@@ -7,15 +7,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PUBLIC = path.join(__dirname, 'public');
+// This folder only holds what is specific to P2P; everything else (game client,
+// renderer, shared simulation/room/auditor) is served from the server project.
+const ROOTS = [path.join(__dirname, 'public'), path.join(__dirname, '..', 'ricochet-arena-server', 'public')];
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css' };
 
 export async function start({ port = 8081, signal = false, signalPort = 9000 } = {}) {
   const server = http.createServer((req, res) => {
-    let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    let p;
+    try { p = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { res.writeHead(400); return res.end(); }
     if (p === '/') p = '/index.html';
-    const file = path.normalize(path.join(PUBLIC, p));
-    if (!file.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
+    const file = ROOTS.map(r => path.normalize(path.join(r, p))).find((f, i) => f.startsWith(ROOTS[i] + path.sep) && fs.existsSync(f));
+    if (!file) { res.writeHead(404); return res.end('not found'); }
     fs.readFile(file, (err, data) => {
       if (err) { res.writeHead(404); return res.end('not found'); }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });

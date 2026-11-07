@@ -1,7 +1,10 @@
 # Ricochet Arena (approach 2: serverless peer-to-peer)
 
-The same game as `../ricochet-arena-server`: same mechanics, controls and
-simulation code (`public/shared/sim.js`). Here there is **no game server**.
+The same game as `../ricochet-arena-server`: same mechanics, controls and code.
+This folder only holds what's P2P-specific (`public/index.html`, `public/net-p2p.js`,
+vendored PeerJS). The game client, renderer, simulation, room and auditor are reused from
+the server project, by `dev-server.js` during development and by `npm run build` when making
+a deployable `dist/`. Here there is **no game server**.
 The page is plain static files, and browsers connect directly to each other over
 WebRTC.
 
@@ -16,12 +19,16 @@ WebRTC.
 
 ## Run / host it
 
-Any static file host works (GitHub Pages, Netlify, `python3 -m http.server`…).
-You just need to serve the `public/` folder:
+Build the static site once, then put `dist/` on any static host (GitHub Pages, Netlify,
+`python3 -m http.server`…):
 
 ```bash
-cd projects/ricochet-arena-p2p/public
-python3 -m http.server 8081      # then open http://localhost:8081
+cd projects/ricochet-arena-p2p
+npm run build
+```
+
+```bash
+cd dist && python3 -m http.server 8081      # then open http://localhost:8081
 ```
 
 Signalling (the initial handshake only) uses the free public PeerJS server by
@@ -39,18 +46,42 @@ Optional `&ice=[...]` takes a JSON list of STUN/TURN servers.
 Controls are identical to the original: ↑ ↓ ← → + **M**, a second local player on **E S D F + Q**,
 and a mouse player (drives toward the pointer, click to fire).
 
+## Cheating
+
+Guests can't cheat, for the same reasons as with the server: the host runs the same validated
+room code. The host could run modified code, so **every guest audits it**:
+
+* The simulation is bit-exact on every browser engine (`shared/dmath.js` replaces the
+  engine-dependent `Math.sin/cos/atan2`), and the whole game state is serialisable.
+* A guest gets the full state when it connects. After that the host publishes, every tick,
+  the joins and leaves, the exact input frame it used for each seat, and a hash of the
+  resulting state.
+* Each guest replays that tick on its own copy (`shared/verify.js`) and checks:
+  * the hash matches, so the host bent no rule (no teleporting, invincibility or extra shots)
+  * its own inputs were used exactly as sent, so nothing was forged or altered
+  * its join carried its own random nonce, which is mixed into the round seed so the host
+    can't choose mazes or crate drops alone
+  * it wasn't silently removed
+  * the host keeps publishing
+* On any failure the guest stops and shows "Cheating detected" with the reason.
+
+What remains possible for a host: lag (delaying or dropping inputs looks the same as a bad
+connection), and bots or aim assistance, which no game can prevent. A host could also fake
+extra "players" to add nonces of its own, which gives a little influence over future mazes.
+
 ## Tests
 
 ```bash
-npm test         # host-room logic: joins, acks, prediction == host sim, input dedupe, seat caps
-npm run e2e      # real WebRTC between two headless Chromium pages, with local signalling
+npm test         # the shared unit tests (simulation, weapons, room, anti-cheat)
+npm run e2e      # real WebRTC between headless Chromium pages, with local signalling
 ```
 
 The e2e run checks: the first browser becomes host and the second joins as guest; both
 tanks are visible; the guest's movement shows up on the host; **the guest's
 predicted position equals the host's authoritative position**; guest shots reach
-the host; when the host tab closes, the guest takes over as host. It also checks
-there are no page errors.
+the host; an honest host raises no alarm; **a host that edits its game state is caught by the
+guest on the next tick**; when the host tab closes, another guest takes over as host. It also
+checks there are no page errors.
 
 ## Trade-offs vs. approach 1
 
@@ -59,7 +90,7 @@ there are no page errors.
 | Hosting | needs a Node process | any static host |
 | Latency | everyone goes via the server | guests go directly to the host. The host itself has zero latency (a small advantage) |
 | Strict NAT / corporate networks | always works (WebSocket) | may need a TURN server via `&ice=` |
-| Cheating | server is neutral | the host could cheat (fine among friends) |
+| Cheating | server is neutral | every guest audits the host; a cheating host is detected and play stops |
 | Host leaves | n/a | ~2.5 s handover, scores reset |
 
 ## Limitations

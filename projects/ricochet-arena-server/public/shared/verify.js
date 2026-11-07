@@ -15,12 +15,17 @@ import { frameToInput } from './room.js';
 export class Auditor {
   constructor(onCheat) {
     this.onCheat = onCheat;
+    this.failed = null;
+    this.reset();
+  }
+
+  // New connection / new host: seat ids and game state start over.
+  reset() {
     this.game = null;
     this.sent = new Map();     // my seat id -> Map(seq -> [bits, mx, my])
     this.joins = [];           // {name, nonce} I asked for, matched to seat ids when they appear
     this.mySeats = new Set();
     this.lastUsed = new Map(); // seat id -> [seq, bits, mx, my] last applied
-    this.failed = null;
     this.lastLogAt = 0;
   }
 

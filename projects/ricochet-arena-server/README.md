@@ -77,10 +77,42 @@ holding one. The four weapons are the original's default crate set:
 
 After a weapon is used up, the tank goes back to the cannon.
 
+## Cheating
+
+The server runs the game and every client only sends button presses, so a modified client
+can't move faster, teleport, fire extra shots, survive hits or change scores. On top of that,
+`public/shared/room.js` (the same room code the P2P host runs):
+
+* validates and normalises every message and drops anything malformed
+* locks each seat to the control scheme it joined with: a keyboard seat can't send mouse aim
+  to snap-turn, and a mouse seat can't send keys
+* consumes exactly one input frame per tick per seat, with a bounded queue, so sending inputs
+  faster or in bursts gains nothing
+* rate-limits each connection and kicks floods; strips control and bidi characters from names
+  so they can't be used to spoof other players
+* there's no hidden information to leak: everything in a snapshot is visible on screen anyway
+
+What no game can stop: bots or aim assistance running on a player's own computer.
+
+## Code layout
+
+| File | Role |
+|---|---|
+| `public/shared/sim.js` | the whole game: maze, movement, weapons, crates, rounds; deterministic and serialisable |
+| `public/shared/dmath.js` | bit-exact trig (identical results on every browser engine) |
+| `public/shared/protocol.js` | snapshot wire format, defined once by named field lists |
+| `public/shared/room.js` | authoritative room + input validation (server **and** P2P host) |
+| `public/shared/verify.js` | auditor a P2P guest uses to catch a cheating host |
+| `public/game-client.js` | input, prediction, interpolation, events; transport-agnostic |
+| `public/render.js`, `public/audio.js` | drawing/effects and synthesized sounds |
+| `public/net-ws.js` | WebSocket transport (the P2P project adds `net-p2p.js`) |
+| `server.js` | HTTP + WebSocket plumbing around `room.js` |
+
 ## Tests
 
 ```bash
-npm test
+npm test        # simulation, weapons, server, anti-cheat (36 tests)
+npm run e2e     # two headless Chromium players against a real server
 ```
 
 The tests cover movement speeds, turning, wall collision, bounce rules,

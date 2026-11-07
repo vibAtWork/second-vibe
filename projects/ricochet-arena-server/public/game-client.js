@@ -25,7 +25,7 @@ const store = {
 const angDiff = (a, b) => { let d = a - b; while (d > 180) d -= 360; while (d < -180) d += 360; return d; };
 const lerp = (a, b, t) => a + (b - a) * t;
 
-// createTransport({ room, params, onMessage, onStatus, onConnected }) -> { send(msg), stop(), info? }
+// createTransport({ room, params, onMessage, onStatus, onConnected, onDisconnected }) -> { send(msg), stop() }
 export function startClient(createTransport) {
   const $ = id => document.getElementById(id);
   const canvas = $('c'), statusEl = $('status');
@@ -102,6 +102,7 @@ export function startClient(createTransport) {
   // (Re)connected: forget old room state and re-join with the same local players.
   function onConnected() {
     const slots = seats.splice(0).map(s => s.slot);
+    auditor.reset();
     snaps.length = offsets.length = 0; clockOffset = latest = maze = null;
     slots.forEach(join);
     updateButtons();
@@ -232,7 +233,9 @@ export function startClient(createTransport) {
     });
   }
 
-  const net = createTransport({ room, params, onMessage, onStatus: t => { if (!cheat) statusEl.textContent = t; }, onConnected });
+  // Connection lost: nothing to audit until the next host/server syncs us again.
+  const onDisconnected = () => auditor.reset();
+  const net = createTransport({ room, params, onMessage, onStatus: t => { if (!cheat) statusEl.textContent = t; }, onConnected, onDisconnected });
   requestAnimationFrame(frame);
   // exposed for automated tests
   window.__ra = { seats, net, get latest() { return latest; }, get maze() { return maze; }, get cheat() { return cheat; } };

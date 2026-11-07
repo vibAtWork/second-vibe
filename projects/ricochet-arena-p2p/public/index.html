@@ -41,6 +41,10 @@
   Send the invite link to friends: the first browser in a room hosts, everyone else connects to it directly.
 </div>
 <script src="vendor/peerjs.min.js"></script>
-<script type="module" src="client.js"></script>
+<script type="module">
+  import { startClient } from './game-client.js';
+  import { p2pTransport } from './net-p2p.js';
+  startClient(p2pTransport);
+</script>
 </body>
 </html>

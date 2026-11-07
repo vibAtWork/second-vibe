@@ -12,3 +12,7 @@
 - **Gatling rounds** start moving on the frame they're fired, like other projectiles.
 - **Frag shards pass through walls** (changed on the owner's feedback about the original). Earlier I read the code as making them stall at walls.
 - **Missile smoke**: grey before lock-on, then ~50% of puffs use the target's colour. The snapshot carries the target id for this.
+- **Anti-cheat (server):** the server already runs the game. Hardening: strict validation, per-seat control scheme lock, one frame per tick, rate limit and kick, name sanitising.
+- **Anti-cheat (P2P):** I chose replay auditing over lockstep or rollback. The host stays authoritative (smooth play) and guests verify it after the fact with per-tick hashes. This needed bit-exact trig (`dmath.js`) because `Math.sin` etc. may differ across engines. Join nonces go into the round seed so the host can't choose mazes alone.
+- **Shared code instead of copies:** the P2P folder no longer copies shared code. It reuses the server project's files through its dev server and a `build.mjs` that produces `dist/` for static hosting. The Docker build stays self-contained because it only needs the server folder.
+- **Refactor:** a protocol field list replaces positional indexing; one `busy` flag replaces four weapon flags; a `PROJECTILES` table plus `spawn()`; the client is split into game-client/render/audio/transport. JS went from 3,042 to 1,926 lines across both projects, with anti-cheat added.
