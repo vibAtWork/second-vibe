@@ -121,9 +121,8 @@ test('round flow: freeze, fire limit, self-hit, scoring, bullet expiry', () => {
   const hold = new Map([[1, { fire: 1 }]]);
   g.step(hold); g.step(hold); g.step(hold);
   assert.equal(g.bullets.length, 1);
-  // Max 5 bullets.
-  for (let i = 0; i < 20; i++) { g.step(new Map([[1, {}]])); g.step(hold); }
-  assert.ok(g.bullets.filter(b => b.owner === 1).length <= 5);
+  // Only one cannon ball in play at a time (original default setting).
+  for (let i = 0; i < 20; i++) { g.step(new Map([[1, {}]])); g.step(hold); assert.ok(g.bullets.filter(b => b.owner === 1).length <= 1); }
   // Kill tank 2 directly, check scoring after countdown.
   const g2 = new Game(9);
   g2.addPlayer(1, 'a', '#f00'); g2.addPlayer(2, 'b', '#00f');

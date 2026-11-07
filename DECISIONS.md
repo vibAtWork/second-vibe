@@ -6,3 +6,7 @@
 - **Fire taps are latched** until the next 25 Hz tick, so a key tap shorter than 40 ms still fires. The original polled the key once per frame and could miss very short taps.
 - **Approach 1 netcode:** authoritative server, one queued input per tick, client prediction for your own tank only, 90 ms interpolation for everything else. Input frames are re-sent 4× for loss tolerance.
 - **Approach 2 (P2P):** the first browser to claim the peer id `ricochet-arena-v1-<room>` hosts. A random back-off picks the new host when one leaves. Close events from WebRTC aren't reliable, so a 2.5 s snapshot timeout (guest side) and a 6 s silence timeout (host side) detect drops. PeerJS is vendored so the page doesn't depend on a CDN.
+- **Bullet limit = 1**, from the original's default settings block (`settingsMaxBullets = 1`). My earlier value of 5 was a wrong assumption.
+- **Crate pickup** uses the original rule (a crate corner inside the tank), plus "tank centre over the crate". The tank size is approximated, and without the extra rule a tank parked squarely on a crate turned 45° would miss it.
+- **Frag shards** follow the original's code path literally: on touching a wall a shard stops for the rest of that frame instead of bouncing, so it creeps slowly through walls while fading.
+- **Gatling rounds** start moving on the frame they're fired, like other projectiles.

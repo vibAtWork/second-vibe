@@ -55,11 +55,27 @@ Numbers were read from the supplied SWF's game logic:
 * Bullets: speed `4.5·S/50` px/frame in 7 sub-steps, bouncing by probing whether
   flipping x or flipping y gets them out of the wall. They last 250 frames (10 s),
   appear `4.5/16·S` in front of the tank, and can destroy their own tank.
-  Each tank can have at most 5 bullets in play, and fire needs a release between shots.
+  **One cannon ball per tank at a time** (the original's default setting), and fire needs a release between shots.
 * Tanks drive through each other (only walls block them, as in the original).
 * Rounds: 50-frame freeze at the start. Once only one tank (or none) is left,
   play continues for 125 frames (bullets can still kill the survivor), then the
   survivor scores and a new maze is generated.
+
+## Power-up crates
+
+Crates drop on the original's timer: the first after `(350 + rand·200)·0.1` frames, then
+every `(350 + rand·200 + 2000/cells)·0.1` frames, on a free random cell. Drive over one
+while holding the normal cannon to pick it up. You can't pick up a second weapon while
+holding one. The four weapons are the original's default crate set:
+
+| Weapon | How it works |
+|---|---|
+| **Laser** | While held, a dashed sight line shows the bouncing path (200 px at scale 50, stops at a tank). Fire to shoot a beam that travels 70 px per frame for 8 frames, ricocheting off walls. Its first 7 px are harmless. Your tank can't move while the beam is live. |
+| **Frag bomb** | Fire launches a bouncing bomb (same speed as a cannon ball). Press fire again to burst it into 40 shards flying in random directions at 4–8.5 px/frame. Shards fade after 20 frames and only creep through walls. The bomb also bursts when its 10 s run out, when it hits a tank (killing it), or if its owner dies. |
+| **Gatling gun** | Hold fire: the barrels spin up for 10 frames, then fire every 3rd frame (20 rounds, ±5.5° spread, 5.5 px/frame, 5 s life, harmless for their first 2 frames). Release to stop; it spins down and you get your cannon back. |
+| **Homing missile** | Flies straight and bounces for 50 frames, then locks onto the nearest tank **by path through the maze** (which can be you). It steers toward the next cell on the shortest path. Lasts 10 s. |
+
+After a weapon is used up, the tank goes back to the cannon.
 
 ## Tests
 
@@ -68,15 +84,15 @@ npm test
 ```
 
 The tests cover movement speeds, turning, wall collision, bounce rules,
-self-hits, the fire limit, round scoring, and maze connectivity. They also
+self-hits, the one-ball limit, crate timing and pickup, each weapon's behaviour, round scoring, and maze connectivity. They also
 check that two real WebSocket clients see each other, that rooms are isolated,
 and that **the server's tank position matches the client's prediction exactly**
 after 10 frames of input.
 
 ## Limitations
 
-* No power-ups yet (the original had laser, frag bomb, gatling gun, homing missile and others, from crates).
-  The core bullet game is complete.
+* Only the original's four default crate weapons are implemented. The original's code also had
+  rarely-enabled extras (death ray, remote-controlled missile, electric bullet) that are not included.
 * Tank size is an approximation (0.32 × 0.40 cells), and bullet hits use the
   tank body rectangle. The original tested hits against the drawn sprite shape.
 * Your own tank is shown at "now" while others are ~90 ms + ping behind

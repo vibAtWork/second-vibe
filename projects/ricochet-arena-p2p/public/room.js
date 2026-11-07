@@ -22,7 +22,7 @@ export class HostRoom {
     return m && { t: 'maze', round: g.round, maze: { seed: m.seed, W: m.W, H: m.H, S: m.S, v: m.v, h: m.h, ox: m.ox, oy: m.oy } };
   }
 
-  broadcastMaze() { const mm = this.mazeMsg(); if (mm) for (const c of this.conns) c.send(mm); }
+  broadcastMaze() { const mm = this.mazeMsg(); if (!mm) return; this.lastMazeSeed = this.game.maze.seed; for (const c of this.conns) c.send(mm); }
 
   addConn(conn) {
     conn.seatIds = conn.seatIds || [];
@@ -58,10 +58,9 @@ export class HostRoom {
       const name = String(msg.name || 'Player').slice(0, 16);
       this.seats.set(id, { id, conn, queue: [], last: {}, lastSeq: 0 });
       conn.seatIds.push(id);
-      const before = this.game.maze && this.game.maze.seed;
       this.game.addPlayer(id, name, this.freeColor());
       conn.send({ t: 'joined', id, slot: msg.slot });
-      if (this.game.maze && this.game.maze.seed !== before) this.broadcastMaze();
+      if (this.game.maze && this.game.maze.seed !== this.lastMazeSeed) this.broadcastMaze();
       this.log(`${name} joined (#${id})`);
     } else if (msg.t === 'in' && Array.isArray(msg.f)) {
       const seat = this.seats.get(msg.id);
@@ -91,17 +90,11 @@ export class HostRoom {
       if (inp) { seat.last = inp; seat.lastSeq = inp.seq; } else inp = seat.last;
       inputs.set(seat.id, inp);
     }
-    const prevSeed = g.maze && g.maze.seed;
     g.step(inputs);
     const ev = g.drainEvents();
-    if (g.maze && g.maze.seed !== prevSeed) this.broadcastMaze();
-    const base = {
-      t: 's', tick: g.tick, frozen: g.frozen, end: g.endCount,
-      tanks: [...g.tanks.values()].map(t => [t.id, +t.x.toFixed(2), +t.y.toFixed(2), +t.rot.toFixed(3), t.alive ? 1 : 0, t.triggerReleased ? 1 : 0, t.bulletsFired]),
-      bullets: g.bullets.map(b => [b.id, +b.x.toFixed(2), +b.y.toFixed(2)]),
-      players: [...g.players.values()].map(p => [p.id, p.name, p.color, p.score]),
-      ev,
-    };
+    if (g.maze && g.maze.seed !== this.lastMazeSeed) this.broadcastMaze();
+    const base = g.snapshot();
+    base.ev = ev;
     for (const c of this.conns) {
       const ack = {};
       for (const id of c.seatIds) { const s = this.seats.get(id); if (s) ack[id] = s.lastSeq; }

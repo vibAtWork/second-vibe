@@ -62,17 +62,12 @@ export function createServer({ port = 8080, log = console.log } = {}) {
       else inp = seat.last;
       inputs.set(seat.id, inp);
     }
-    const prevSeed = g.maze && g.maze.seed;
     g.step(inputs);
     const events = g.drainEvents();
-    if (g.maze && g.maze.seed !== prevSeed) for (const c of room.conns) send(c, mazeMsg(g));
-    const snap = {
-      t: 's', tick: g.tick, frozen: g.frozen, end: g.endCount,
-      tanks: [...g.tanks.values()].map(t => [t.id, +t.x.toFixed(2), +t.y.toFixed(2), +t.rot.toFixed(3), t.alive ? 1 : 0, t.triggerReleased ? 1 : 0, t.bulletsFired]),
-      bullets: g.bullets.map(b => [b.id, +b.x.toFixed(2), +b.y.toFixed(2)]),
-      players: [...g.players.values()].map(p => [p.id, p.name, p.color, p.score]),
-      ev: events,
-    };
+    // Announce the maze whenever it differs from the last one we sent (new round, first join, ...).
+    if (g.maze && g.maze.seed !== room.lastMazeSeed) { room.lastMazeSeed = g.maze.seed; for (const c of room.conns) send(c, mazeMsg(g)); }
+    const snap = g.snapshot();
+    snap.ev = events;
     for (const c of room.conns) {
       const acks = {};
       for (const id of c.seatIds) { const s = room.seats.get(id); if (s) acks[id] = s.lastSeq; }
@@ -103,12 +98,10 @@ export function createServer({ port = 8080, log = console.log } = {}) {
         const name = String(msg.name || 'Player').slice(0, 16);
         room.seats.set(id, { id, ws, queue: [], last: {}, lastSeq: 0 });
         ws.seatIds.push(id);
-        const hadMaze = room.game.maze && room.game.maze.seed;
         room.game.addPlayer(id, name, freeColor(room));
         send(ws, { t: 'joined', id, slot: msg.slot });
-        if (room.game.maze && room.game.maze.seed !== hadMaze) {
-          for (const c of room.conns) send(c, mazeMsg(room.game));
-        }
+        const g = room.game;
+        if (g.maze && g.maze.seed !== room.lastMazeSeed) { room.lastMazeSeed = g.maze.seed; for (const c of room.conns) send(c, mazeMsg(g)); }
         log(`[${roomName}] ${name} joined (#${id}), ${room.game.players.size} players`);
       } else if (msg.t === 'in' && Array.isArray(msg.f)) {
         // msg: {t:'in', id, f:[[seq, bits, mx, my], ...]} - bundles recent frames for loss tolerance

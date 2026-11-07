@@ -64,7 +64,7 @@ there are no page errors.
 
 ## Limitations
 
-* Same gameplay limitations as approach 1 (no power-up crates yet, approximated tank size).
+* Same gameplay and limitations as approach 1, including the power-up crates (laser, frag bomb, gatling gun, homing missile). See its README for the weapon rules.
 * It relies on the public PeerJS signalling server unless you run your own. Without TURN,
   some network pairs can't connect.
 * Scores reset when the host changes.
