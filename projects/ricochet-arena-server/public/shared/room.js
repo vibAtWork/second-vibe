@@ -9,7 +9,12 @@
 //  * per-connection token-bucket rate limit; abusive connections are kicked
 //  * joins/leaves are applied at tick boundaries and, when `verifiable` is on, every
 //    tick is published as {ops, inputs, state hash} so peers can re-run and audit it
+//  * behavioural detection (anticheat.js) flags or kicks bots and aim assistance;
+//    kicked connections can't rejoin the room
+//  * a seat whose inputs stop arriving goes idle after STARVE_TICKS instead of
+//    repeating its last input (no "hold forward and pull the cable")
 import { Game, VIEW_W, VIEW_H } from './sim.js';
+import { CheatWatch } from './anticheat.js';
 
 const COLORS = ['#e8483b', '#3b8de8', '#3fbf5a', '#e8b23b', '#a65be8', '#e85bb4', '#38c7c7', '#8a8a8a'];
 export const MAX_QUEUE = 4;
@@ -17,6 +22,8 @@ export const MAX_SEATS_PER_CONN = 3;
 export const MAX_PLAYERS = 8;
 export const MAX_FRAMES_PER_MSG = 8;
 const RATE = { capacity: 150, perSec: 120, kickAfterDrops: 600 };
+export const STARVE_TICKS = 8; // ~1/3 s without input -> tank goes idle
+const IDLE = [0, 0, 0];
 
 // Wire input -> normalised [bits, mx, my] for a seat's scheme (or null if invalid).
 // The client applies the same function before sending, so audits compare equal.
@@ -43,8 +50,14 @@ export function cleanName(name) {
 }
 
 export class HostRoom {
-  constructor({ seed, verifiable = false, log = () => {}, now = () => performance.now() } = {}) {
+  // anticheat: 'kick' (default) | 'flag' (report only) | 'off'
+  // onKick(conn, reason): lets the owner add e.g. an IP ban
+  constructor({ seed, verifiable = false, anticheat = 'kick', onKick = () => {}, log = () => {}, now = () => performance.now() } = {}) {
     this.game = new Game(seed);
+    this.mode = anticheat;
+    this.onKick = onKick;
+    this.reports = [];        // [{ time, tick, id, name, level, reason, evidence }]
+    this.watch = anticheat === 'off' ? null : new CheatWatch({ onVerdict: (...a) => this.onVerdict(...a) });
     this.verifiable = verifiable;
     this.log = log;
     this.now = now;
@@ -76,7 +89,31 @@ export class HostRoom {
     if (i < 0) return;
     conn.seatIds.splice(i, 1);
     this.seats.delete(id);
+    this.watch?.forget(id);
     this.ops.push(['remove', id]);
+  }
+
+  onVerdict(id, level, reason, evidence) {
+    const name = this.game.players.get(id)?.name ?? '?';
+    const report = { time: Date.now(), tick: this.game.tick, id, name, level, reason, evidence };
+    this.reports.push(report);
+    if (this.reports.length > 200) this.reports.shift();
+    this.log(`anti-cheat ${level}: ${name} (#${id}) - ${reason} ${JSON.stringify(evidence)}`);
+    if (level === 'kick' && this.mode === 'kick') this.kick(id, reason);
+  }
+
+  // Remove a cheating player; their connection may not join again.
+  kick(id, reason) {
+    const seat = this.seats.get(id);
+    if (!seat) return;
+    const conn = seat.conn;
+    conn.banned = reason;
+    conn.send({ t: 'kicked', id, reason });
+    conn.seatIds.splice(conn.seatIds.indexOf(id), 1);
+    this.seats.delete(id);
+    this.watch?.forget(id);
+    this.ops.push(['kick', id, reason]);
+    this.onKick(conn, reason);
   }
 
   allow(conn) {
@@ -97,6 +134,7 @@ export class HostRoom {
   }
 
   join(conn, msg) {
+    if (conn.banned) return conn.send({ t: 'banned', reason: conn.banned });
     const players = this.game.players.size + this.ops.filter(o => o[0] === 'add').length - this.ops.filter(o => o[0] === 'remove').length;
     if (conn.seatIds.length >= MAX_SEATS_PER_CONN || players >= MAX_PLAYERS) return conn.send({ t: 'full' });
     const slot = ['arrows', 'esdf', 'mouse'].includes(msg.slot) ? msg.slot : 'arrows';
@@ -125,7 +163,10 @@ export class HostRoom {
       if (frame) seat.queue.push({ seq, frame });
     }
     // Client running fast or a burst arrived: drop the oldest to bound latency.
-    while (seat.queue.length > MAX_QUEUE) { const d = seat.queue.shift(); seat.last = d.frame; seat.lastSeq = d.seq; }
+    while (seat.queue.length > MAX_QUEUE) {
+      const d = seat.queue.shift(); seat.last = d.frame; seat.lastSeq = d.seq;
+      this.watch?.noteOverflow(seat.id, this.game.tick);
+    }
   }
 
   mazeMsg() {
@@ -137,19 +178,25 @@ export class HostRoom {
     const g = this.game;
     const ops = this.ops;
     this.ops = [];
+    const kicked = [];
     for (const op of ops) {
       if (op[0] === 'add') g.addPlayer(op[1], op[2], op[3], op[4]);
-      else g.removePlayer(op[1]);
+      else {
+        if (op[0] === 'kick') kicked.push({ type: 'cheater', id: op[1], name: g.players.get(op[1])?.name ?? '?', reason: op[2] });
+        g.removePlayer(op[1]);
+      }
     }
     const inputs = new Map(), used = [];
     for (const seat of this.seats.values()) {
       const next = seat.queue.shift();
-      if (next) { seat.last = next.frame; seat.lastSeq = next.seq; }
-      inputs.set(seat.id, frameToInput(seat.last));
-      used.push([seat.id, seat.lastSeq, ...seat.last]);
+      if (next) { seat.last = next.frame; seat.lastSeq = next.seq; seat.starved = 0; } else seat.starved = (seat.starved || 0) + 1;
+      const frame = seat.starved > STARVE_TICKS ? IDLE : seat.last;
+      inputs.set(seat.id, frameToInput(frame));
+      used.push([seat.id, seat.lastSeq, ...frame]);
     }
     g.step(inputs);
-    const ev = g.drainEvents();
+    const ev = kicked.concat(g.drainEvents());
+    this.watch?.afterTick(g, used, ev);
     if (g.maze && g.maze.seed !== this.lastMazeSeed) {
       this.lastMazeSeed = g.maze.seed;
       const mm = this.mazeMsg();

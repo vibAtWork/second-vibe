@@ -90,3 +90,25 @@ test('static files are served', async () => {
     assert.notEqual(bad.status, 200);
   } finally { srv.close(); }
 });
+
+test('admin reports need the token; a kicked cheater is banned from reconnecting', async () => {
+  const srv = await createServer({ port: 0, log: () => {}, adminToken: 'secret' });
+  try {
+    assert.equal((await fetch(`http://localhost:${srv.port}/admin/reports`)).status, 404);
+    assert.equal((await fetch(`http://localhost:${srv.port}/admin/reports?token=nope`)).status, 404);
+    const a = client(srv.port, 'ban');
+    await a.open;
+    a.send({ t: 'join', name: 'Cheater', slot: 'arrows' });
+    await until(() => a.id);
+    const room = srv.rooms.get('ban');
+    room.onVerdict(a.id, 'kick', 'test verdict', { n: 1 });
+    await until(() => a.msgs.some(m => m.t === 'kicked'));
+    const r = await (await fetch(`http://localhost:${srv.port}/admin/reports?token=secret`)).json();
+    assert.equal(r.reports[0].reason, 'test verdict');
+    assert.equal(r.bans.length, 1);
+    await until(() => a.ws.readyState === 3, 3000); // server closes the kicked connection
+    const again = new WebSocket(`ws://localhost:${srv.port}/ws?room=ban`);
+    const code = await new Promise(res => again.on('close', c => res(c)));
+    assert.equal(code, 4003);
+  } finally { srv.close(); }
+});

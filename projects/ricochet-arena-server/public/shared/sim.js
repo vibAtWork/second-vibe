@@ -425,12 +425,12 @@ export class Game {
       case 'bullet':
         shoot('bullet');
         t.bulletsFired++;
-        this.events.push({ type: 'fire', x: t.x, y: t.y });
+        this.events.push({ type: 'fire', x: t.x, y: t.y, id: t.id, weapon: 'bullet' });
         return;
       case 'frag':
         if (t.busy) { const bomb = this.bullets.find(x => x.id === t.lastFrag); if (bomb) this.detonate(bomb); return; }
         t.lastFrag = shoot('frag').id;
-        this.events.push({ type: 'fire', x: t.x, y: t.y });
+        this.events.push({ type: 'fire', x: t.x, y: t.y, id: t.id, weapon: 'frag' });
         break;
       case 'laser': {
         const sp = LASER_SPEED / LASER_SUBSTEPS * m.S / 50;

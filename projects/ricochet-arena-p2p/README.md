@@ -65,6 +65,8 @@ room code. The host could run modified code, so **every guest audits it**:
   * the host keeps publishing
 * On any failure the guest stops and shows "Cheating detected" with the reason.
 
+The host also runs the server's behavioural bot detection on its guests (see the server README). Kicks are announced and visible in the audit log, so a guest can tell an anti-cheat kick apart from a silent one.
+
 What remains possible for a host: lag (delaying or dropping inputs looks the same as a bad
 connection), and bots or aim assistance, which no game can prevent. A host could also fake
 extra "players" to add nonces of its own, which gives a little influence over future mazes.

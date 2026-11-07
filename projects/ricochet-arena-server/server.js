@@ -13,9 +13,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 const MAX_ROOMS = 500;
+const BAN_MS = 10 * 60 * 1000; // a kicked cheater's address can't reconnect for 10 minutes
 
-export function createServer({ port = 8080, log = console.log } = {}) {
+// anticheat: 'kick' | 'flag' | 'off'. adminToken: enables GET /admin/reports?token=...
+export function createServer({ port = 8080, log = console.log, anticheat = 'kick', adminToken = '' } = {}) {
+  const bans = new Map(); // remote address -> banned until (ms)
+  const banned = ip => { const until = bans.get(ip); if (until && until > Date.now()) return true; bans.delete(ip); return false; };
+
   const server = http.createServer((req, res) => {
+    if (req.url.startsWith('/admin/reports')) {
+      const token = new URL(req.url, 'http://x').searchParams.get('token');
+      if (!adminToken || token !== adminToken) { res.writeHead(404); return res.end('not found'); }
+      const reports = [...rooms].flatMap(([room, r]) => r.reports.map(x => ({ room, ...x })));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ bans: [...bans].map(([ip, until]) => ({ ip, until: new Date(until).toISOString() })), reports }, null, 2));
+    }
     let p;
     try { p = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { res.writeHead(400); return res.end(); }
     if (p === '/') p = '/index.html';
@@ -35,12 +47,21 @@ export function createServer({ port = 8080, log = console.log } = {}) {
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url, 'http://x');
     const roomName = (url.searchParams.get('room') || 'lobby').slice(0, 32).replace(/[^\w-]/g, '') || 'lobby';
+    const ip = req.socket.remoteAddress;
+    if (banned(ip)) return ws.close(4003, 'banned for cheating');
     if (!rooms.has(roomName) && rooms.size >= MAX_ROOMS) return ws.close(1013, 'server full');
     let room = rooms.get(roomName);
-    if (!room) { room = new HostRoom({ log: m => log(`[${roomName}] ${m}`) }); rooms.set(roomName, room); }
+    if (!room) {
+      room = new HostRoom({
+        anticheat, log: m => log(`[${roomName}] ${m}`),
+        onKick: kickedConn => { bans.set(kickedConn.ip, Date.now() + BAN_MS); setTimeout(() => kickedConn.kick(), 500); },
+      });
+      rooms.set(roomName, room);
+    }
     const conn = {
       send: msg => { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); },
       kick: () => ws.terminate(),
+      ip,
     };
     room.addConn(conn);
     ws.on('message', raw => {
@@ -76,5 +97,5 @@ export function createServer({ port = 8080, log = console.log } = {}) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const port = +(process.env.PORT || 8080);
-  createServer({ port }).then(({ port }) => console.log(`Ricochet Arena running at http://localhost:${port}`));
+  createServer({ port, anticheat: process.env.ANTICHEAT || 'kick', adminToken: process.env.ADMIN_TOKEN || '' }).then(({ port }) => console.log(`Ricochet Arena running at http://localhost:${port}`));
 }

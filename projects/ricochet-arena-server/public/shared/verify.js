@@ -65,6 +65,9 @@ export class Auditor {
       } else if (op[0] === 'remove') {
         if (this.mySeats.has(op[1]) && !this.leaving) return this.fail('host removed my tank');
         g.removePlayer(op[1]);
+      } else if (op[0] === 'kick') { // anti-cheat removal: announced to everyone, not a silent kick
+        this.mySeats.delete(op[1]);
+        g.removePlayer(op[1]);
       } else return this.fail('unknown operation');
     }
     const inputs = new Map();
@@ -74,9 +77,10 @@ export class Auditor {
         const same = prev && prev[0] === seq;
         const want = same ? prev.slice(1) : seq === 0 ? [0, 0, 0] : this.sent.get(id)?.get(seq);
         if (!want) return this.fail('host used an input I never sent');
-        if (want[0] !== bits || want[1] !== mx || want[2] !== my) return this.fail('host altered my input');
+        const idle = same && bits === 0 && mx === 0 && my === 0; // my inputs stopped arriving: tank idles
+        if (!idle && (want[0] !== bits || want[1] !== mx || want[2] !== my)) return this.fail('host altered my input');
         if (prev && seq < prev[0]) return this.fail('host replayed an old input');
-        this.lastUsed.set(id, [seq, bits, mx, my]);
+        if (!idle) this.lastUsed.set(id, [seq, bits, mx, my]);
       }
       inputs.set(id, frameToInput([bits, mx, my]));
     }

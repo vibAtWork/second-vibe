@@ -115,6 +115,14 @@ export function startClient(createTransport) {
     sync(m) { auditor.sync(m.state); },
     log(m) { auditor.log(m); },
     pong(m) { rtt = performance.now() - m.c; },
+    kicked(m) {
+      const i = seats.findIndex(s => s.id === m.id);
+      if (i >= 0) seats.splice(i, 1);
+      updateButtons();
+      banner = { text: `You were removed: ${m.reason}`, color: '#c33', until: performance.now() + 15000 };
+      statusEl.textContent = 'removed by anti-cheat';
+    },
+    banned(m) { seats.length = 0; updateButtons(); statusEl.textContent = `can't join: ${m.reason}`; },
     s(m) { onSnapshot(decodeSnapshot(m)); },
   };
   const onMessage = m => { if (m && handlers[m.t]) handlers[m.t](m); };
@@ -167,6 +175,7 @@ export function startClient(createTransport) {
       case 'shardwall': if (Math.random() < 0.5) audio.shard(); break;
       case 'win': banner = { text: `${nameOf(ev.id)} wins the round!`, color: colorOf(ev.id), until: performance.now() + 2000 }; break;
       case 'draw': banner = { text: 'Draw!', color: '#555', until: performance.now() + 2000 }; break;
+      case 'cheater': banner = { text: `${ev.name} was removed (${ev.reason})`, color: '#c33', until: performance.now() + 5000 }; break;
     }
   }
 
