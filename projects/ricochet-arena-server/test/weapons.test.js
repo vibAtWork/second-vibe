@@ -4,6 +4,7 @@ import {
   Game, generateMaze, cellCenter, traceAimer, MAX_BULLETS, FRAG_SHARDS, GATLING_BULLETS,
   LASER_LIFETIME, HOMING_STARTUP, CRATE_TIME_BASE, CRATE_TIME_RANDOM, CRATE_MODIFIER,
 } from '../public/shared/sim.js';
+import { decodeSnapshot } from '../public/shared/protocol.js';
 
 // A started game with given tanks placed in an open maze (no interior walls).
 function arena(tanks, { W = 6, H = 5, crates = false } = {}) {
@@ -87,7 +88,7 @@ test('frag bomb: second press detonates into 40 shards that kill', () => {
   g.step(press(1)); // detonate
   assert.equal(g.bullets.filter(x => x.kind === 'shard').length, FRAG_SHARDS);
   assert.equal(a.weapon, 'bullet');
-  assert.equal(a.fragFired, false);
+  assert.equal(a.busy, false);
   run(g, 20);
   assert.equal(g.bullets.filter(x => x.kind === 'shard').length, 0, 'shards fade after 20 frames');
   assert.equal(b.alive, false, 'nearby tank shredded');
@@ -150,7 +151,7 @@ test('homing missile flies straight for 50 frames, then hunts the nearest tank t
   for (let i = 0; i < 260 && a.alive && b.alive; i++) g.step(idle);
   assert.ok(!a.alive || !b.alive, 'missile hit a tank');
   assert.equal(a.weapon, 'bullet');
-  assert.equal(a.homingReady, true);
+  assert.equal(a.busy, false);
 });
 
 test('snapshot carries weapons, crates, lasers', () => {
@@ -158,13 +159,13 @@ test('snapshot carries weapons, crates, lasers', () => {
   g.tanks.get(1).weapon = 'laser';
   g.crates.push({ id: 50, cx: 1, cy: 1, x: 10, y: 10, rot: 12, weapon: 'frag' });
   g.step(press(1));
-  const s = g.snapshot();
-  assert.equal(s.tanks[0][7], 1);
-  assert.equal(s.tanks[0][8], 1);
+  const s = decodeSnapshot(JSON.parse(JSON.stringify(g.snapshot())));
+  assert.equal(s.tanks[0].weapon, 1);
+  assert.equal(s.tanks[0].locked, 1);
   assert.equal(s.lasers.length, 1);
-  assert.ok(s.lasers[0][2].length >= 4);
-  assert.deepEqual(s.crates[0].slice(3), [12, 2]);
-  JSON.stringify(s);
+  assert.ok(s.lasers[0].pts.length >= 4);
+  assert.equal(s.crates[0].rot, 12);
+  assert.equal(s.crates[0].weapon, 2);
 });
 
 test('frag shards fly straight through walls', () => {
@@ -201,9 +202,9 @@ test('locked-on missile reports its target in snapshots (for coloured smoke)', (
   Object.assign(g.tanks.get(1), cellCenter(g.maze, 0, 0), { rot: 180, weapon: 'homing' });
   Object.assign(g.tanks.get(2), cellCenter(g.maze, 6, 4), { rot: 0 });
   g.step(press(1));
-  const code = s => s.bullets.find(b => b[3] === 4);
-  assert.equal(code(g.snapshot())[4], 0, 'not locked during startup');
+  const missile = () => decodeSnapshot(g.snapshot()).bullets.find(b => b.kind === 4);
+  assert.equal(missile().target, 0, 'not locked during startup');
   run(g, HOMING_STARTUP + 1);
-  const m = code(g.snapshot());
-  if (m) assert.ok([1, 2].includes(m[4]), 'target id present once homing');
+  const m = missile();
+  if (m) assert.ok([1, 2].includes(m.target), 'target id present once homing');
 });

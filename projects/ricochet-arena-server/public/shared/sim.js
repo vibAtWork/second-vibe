@@ -8,6 +8,7 @@
 // limit on how many bullets each tank can have in play.
 // All code, art and maze generation here is original.
 
+import { encodeList } from './protocol.js';
 import { sin as dsin, cos as dcos, atan2 as datan2, hypot as dhypot } from './dmath.js';
 
 export const FPS = 25;
@@ -40,6 +41,15 @@ export const GATLING_SPEED = 5.5, GATLING_SUBSTEPS = 7, GATLING_LIFETIME = 125, 
 export const GATLING_SPIN = 10, GATLING_SAFE = 2, GATLING_SPREAD = 11;
 export const HOMING_SPEED = 4.5, HOMING_SUBSTEPS = 5, HOMING_LIFETIME = 250, HOMING_STARTUP = 50, HOMING_TURN = 0.12;
 export const PROJ_CODE = { bullet: 0, gatling: 1, frag: 2, shard: 3, homing: 4 };
+// Every projectile kind in one table: speed (px/frame at scale 50), sub-steps
+// per frame, lifetime (frames) and harmless frames after launch.
+export const PROJECTILES = {
+  bullet: { speed: BULLET_SPEED, substeps: BULLET_SUBSTEPS, life: BULLET_LIFETIME, deadly: 0 },
+  gatling: { speed: GATLING_SPEED, substeps: GATLING_SUBSTEPS, life: GATLING_LIFETIME, deadly: GATLING_SAFE },
+  frag: { speed: FRAG_SPEED, substeps: FRAG_SUBSTEPS, life: FRAG_LIFETIME, deadly: 0 },
+  shard: { speed: FRAG_SPEED, substeps: FRAG_SUBSTEPS, life: SHARD_LIFETIME, deadly: 0 },
+  homing: { speed: HOMING_SPEED, substeps: HOMING_SUBSTEPS, life: HOMING_LIFETIME, deadly: 0 },
+};
 export const MOUSE_DEADZONE = 60;    // px: mouse closer than this => stop
 export const FRAMES_FROZEN = 50;     // freeze at round start
 export const FRAMES_BEFORE_END = 125; // after only one tank remains
@@ -375,7 +385,9 @@ export class Game {
       this.tanks.set(p.id, {
         id: p.id, x: c.x, y: c.y, rot: normRot(Math.floor(r() * 36) * 10),
         alive: true, bulletsFired: 0, triggerReleased: true,
-        weapon: 'bullet', laserReady: true, fragFired: false, lastFrag: null, gatlingReady: true, homingReady: true,
+        // weapon: what fire does; busy: a special weapon is in use (laser beam live,
+        // frag bomb in flight, gatling spinning, missile flying)
+        weapon: 'bullet', busy: false, lastFrag: null,
       });
     }
     this.frozen = FRAMES_FROZEN;
@@ -385,74 +397,66 @@ export class Game {
   }
 
   // ------------------------------------------------ weapons
-  locked(t) { return t.weapon === 'laser' && !t.laserReady; }
+  locked(t) { return t.weapon === 'laser' && t.busy; }
 
   weaponReady(t) {
-    switch (t.weapon) {
-      case 'laser': return t.laserReady;
-      case 'frag': return true;
-      case 'gatling': return t.gatlingReady;
-      case 'homing': return t.homingReady;
-      default: return t.bulletsFired < this.settings.maxBullets;
-    }
+    if (t.weapon === 'bullet') return t.bulletsFired < this.settings.maxBullets;
+    return t.weapon === 'frag' || !t.busy; // frag: second press detonates
+  }
+
+  // Special weapon used up -> back to the cannon.
+  finishWeapon(t) {
+    if (!t) return;
+    t.weapon = 'bullet'; t.busy = false; t.lastFrag = null;
+  }
+
+  // Create a projectile of `kind` moving along direction (c, s).
+  spawn(kind, owner, x, y, c, s, speed = PROJECTILES[kind].speed, extra = {}) {
+    const k = PROJECTILES[kind], sp = speed / k.substeps * this.maze.S / 50;
+    const b = { id: this.nextId++, kind, owner, x, y, vx: c * sp, vy: s * sp, substeps: k.substeps, life: k.life, deadly: k.deadly, ...extra };
+    this.bullets.push(b);
+    return b;
   }
 
   fire(t) {
-    const m = this.maze, S = m.S, mz = muzzle(m, t);
-    const proj = (kind, speed, substeps, life, deadly) => {
-      const sp = speed / substeps * S / 50;
-      const b = { id: this.nextId++, kind, owner: t.id, x: mz.x, y: mz.y, vx: mz.c * sp, vy: mz.s * sp, substeps, life, deadly };
-      this.bullets.push(b);
-      return b;
-    };
+    const m = this.maze, mz = muzzle(m, t);
+    const shoot = (kind, extra) => this.spawn(kind, t.id, mz.x, mz.y, mz.c, mz.s, undefined, extra);
     switch (t.weapon) {
       case 'bullet':
-        proj('bullet', BULLET_SPEED, BULLET_SUBSTEPS, BULLET_LIFETIME, 0);
+        shoot('bullet');
         t.bulletsFired++;
+        this.events.push({ type: 'fire', x: t.x, y: t.y });
+        return;
+      case 'frag':
+        if (t.busy) { const bomb = this.bullets.find(x => x.id === t.lastFrag); if (bomb) this.detonate(bomb); return; }
+        t.lastFrag = shoot('frag').id;
         this.events.push({ type: 'fire', x: t.x, y: t.y });
         break;
       case 'laser': {
-        const sp = LASER_SPEED / LASER_SUBSTEPS * S / 50;
+        const sp = LASER_SPEED / LASER_SUBSTEPS * m.S / 50;
         this.lasers.push({ id: this.nextId++, owner: t.id, x: mz.x, y: mz.y, vx: mz.c * sp, vy: mz.s * sp, life: LASER_LIFETIME, safe: LASER_SAFE_STEPS, trail: [] });
-        t.laserReady = false;
         this.events.push({ type: 'laser', x: t.x, y: t.y });
         break;
       }
-      case 'frag':
-        if (t.fragFired) { const bomb = this.bullets.find(x => x.id === t.lastFrag); if (bomb) this.detonate(bomb); }
-        else {
-          t.lastFrag = proj('frag', FRAG_SPEED, FRAG_SUBSTEPS, FRAG_LIFETIME, 0).id;
-          t.fragFired = true;
-          this.events.push({ type: 'fire', x: t.x, y: t.y });
-        }
-        break;
       case 'gatling':
         this.guns.push({ owner: t.id, active: true, spin: 0, counter: 0, left: GATLING_BULLETS });
-        t.gatlingReady = false;
         this.events.push({ type: 'spin', id: t.id });
         break;
-      case 'homing': {
-        const b = proj('homing', HOMING_SPEED, HOMING_SUBSTEPS, HOMING_LIFETIME, 0);
-        b.startup = HOMING_STARTUP; b.homing = false; b.target = null;
-        t.homingReady = false;
+      case 'homing':
+        shoot('homing', { startup: HOMING_STARTUP, homing: false, target: null });
         this.events.push({ type: 'missile', x: t.x, y: t.y });
         break;
-      }
     }
+    t.busy = true;
   }
-
-  setWeapon(t, w) { if (t) t.weapon = w; }
 
   detonate(b) {
     if (b.dead) return;
     b.dead = true;
-    const o = this.tanks.get(b.owner);
-    if (o) { o.fragFired = false; o.lastFrag = null; this.setWeapon(o, 'bullet'); }
-    const S = this.maze.S;
+    this.finishWeapon(this.tanks.get(b.owner));
     for (let i = 0; i < FRAG_SHARDS; i++) {
       const a = (Math.floor(this.rand() * 360) - 90) * D2R;
-      const sp = (FRAG_SPEED - this.rand() * FRAG_SPEED + 4) / FRAG_SUBSTEPS * S / 50;
-      this.bullets.push({ id: this.nextId++, kind: 'shard', owner: b.owner, x: b.x, y: b.y, vx: dcos(a) * sp, vy: dsin(a) * sp, substeps: FRAG_SUBSTEPS, life: SHARD_LIFETIME, deadly: 0 });
+      this.spawn('shard', b.owner, b.x, b.y, dcos(a), dsin(a), FRAG_SPEED - this.rand() * FRAG_SPEED + 4);
     }
     this.events.push({ type: 'frag', x: b.x, y: b.y });
   }
@@ -476,15 +480,14 @@ export class Game {
       if (g.spin < GATLING_SPIN) g.spin++;
       if (g.spin === GATLING_SPIN && ++g.counter % 3 === 0 && g.left > 0) {
         g.left--;
-        const S = this.maze.S, mz = muzzle(this.maze, t);
+        const mz = muzzle(this.maze, t);
         const a = (t.rot - 90 + this.rand() * GATLING_SPREAD - GATLING_SPREAD / 2) * D2R;
-        const sp = GATLING_SPEED / GATLING_SUBSTEPS * S / 50;
-        this.bullets.push({ id: this.nextId++, kind: 'gatling', owner: t.id, x: mz.x, y: mz.y, vx: dcos(a) * sp, vy: dsin(a) * sp, substeps: GATLING_SUBSTEPS, life: GATLING_LIFETIME, deadly: GATLING_SAFE });
+        this.spawn('gatling', t.id, mz.x, mz.y, dcos(a), dsin(a));
         this.events.push({ type: 'gshot' });
       }
     } else {
       if (g.spin > 0) g.spin--;
-      if (g.spin === 0) { t.gatlingReady = true; this.setWeapon(t, 'bullet'); return false; }
+      if (g.spin === 0) { this.finishWeapon(t); return false; }
     }
     return true;
   }
@@ -502,8 +505,7 @@ export class Game {
     }
     L.trail.push([L.x, L.y]);
     if (--L.life === 0) {
-      const o = this.tanks.get(L.owner);
-      if (o) { o.laserReady = true; this.setWeapon(o, 'bullet'); }
+      this.finishWeapon(this.tanks.get(L.owner));
       return false;
     }
     return true;
@@ -597,7 +599,7 @@ export class Game {
         const dx = t.x - c.x, dy = t.y - c.y;
         const lx = dx * co + dy * si, ly = -dx * si + dy * co; // tank centre in crate space
         if (corners.some(([x, y]) => pointInTank(S, t, x, y)) || (Math.abs(lx) <= h && Math.abs(ly) <= h)) {
-          this.setWeapon(t, c.weapon);
+          t.weapon = c.weapon;
           this.events.push({ type: 'pickup', id: t.id, weapon: c.weapon });
           return false;
         }
@@ -656,7 +658,7 @@ export class Game {
         b.dead = true;
         const o = this.tanks.get(b.owner);
         if (o && b.kind === 'bullet') o.bulletsFired--;
-        if (o && b.kind === 'homing') { o.homingReady = true; this.setWeapon(o, 'bullet'); }
+        if (b.kind === 'homing') this.finishWeapon(o);
       } else survivors.push(b);
     }
     // shards created by detonations this frame
@@ -691,18 +693,20 @@ export class Game {
     }
   }
 
-  // Compact network snapshot (shared by the Node server and the P2P host).
+  // Network snapshot (wire layout defined in protocol.js).
   snapshot() {
-    const r2 = v => Math.round(v * 100) / 100;
     return {
       t: 's', tick: this.tick, frozen: this.frozen, end: this.endCount,
-      tanks: [...this.tanks.values()].map(t => [t.id, r2(t.x), r2(t.y), Math.round(t.rot * 1000) / 1000, t.alive ? 1 : 0, t.triggerReleased ? 1 : 0, t.bulletsFired, WEAPON_CODE[t.weapon], this.locked(t) ? 1 : 0, t.weapon === 'laser' && t.laserReady ? 1 : 0]),
-      // [id, x, y, kind, shard life | missile target id (0 = not homing yet / no target)]
-      bullets: this.bullets.map(b => [b.id, r2(b.x), r2(b.y), PROJ_CODE[b.kind], b.kind === 'shard' ? b.life : b.kind === 'homing' && b.homing && b.target ? b.target : 0]),
-      lasers: this.lasers.map(L => [L.id, L.owner, L.trail.flat().map(r2)]),
-      crates: this.crates.map(c => [c.id, r2(c.x), r2(c.y), Math.round(c.rot), WEAPON_CODE[c.weapon]]),
-      guns: this.guns.map(g => [g.owner, g.spin]),
-      players: [...this.players.values()].map(p => [p.id, p.name, p.color, p.score]),
+      tanks: encodeList('tanks', [...this.tanks.values()].map(t => ({
+        ...t, trigger: t.triggerReleased, weapon: WEAPON_CODE[t.weapon], locked: this.locked(t), aiming: t.weapon === 'laser' && !t.busy,
+      }))),
+      bullets: encodeList('bullets', this.bullets.map(b => ({
+        ...b, kind: PROJ_CODE[b.kind], target: b.kind === 'homing' && b.homing && b.target ? b.target : 0,
+      }))),
+      lasers: encodeList('lasers', this.lasers.map(L => ({ ...L, pts: L.trail.flat() }))),
+      crates: encodeList('crates', this.crates.map(c => ({ ...c, rot: Math.round(c.rot), weapon: WEAPON_CODE[c.weapon] }))),
+      guns: encodeList('guns', this.guns),
+      players: encodeList('players', [...this.players.values()]),
     };
   }
 

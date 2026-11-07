@@ -40,6 +40,10 @@
   Mouse player: the tank drives toward the pointer, click to fire.
   Send the invite link to friends: everyone in the same room plays together.
 </div>
-<script type="module" src="client.js"></script>
+<script type="module">
+  import { startClient } from './game-client.js';
+  import { wsTransport } from './net-ws.js';
+  startClient(wsTransport);
+</script>
 </body>
 </html>
