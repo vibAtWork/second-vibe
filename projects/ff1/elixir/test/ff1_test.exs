@@ -32,20 +32,38 @@ defmodule FF1Test do
     end
   end
 
-  test "pseudorandom round trips" do
+  test "NIST samples via the general (multi-block) round path" do
+    Process.put({FF1, :force_general}, true)
+
+    try do
+      for {k, tw, radix, pt, ct} <- @vectors do
+        c = FF1.new(hex(k), radix)
+        assert fmt(FF1.encrypt(c, hex(tw), parse(pt))) == ct
+        assert fmt(FF1.decrypt(c, hex(tw), parse(ct))) == pt
+      end
+    after
+      Process.delete({FF1, :force_general})
+    end
+  end
+
+  test "pseudorandom round trips, fast path agrees with general path" do
     :rand.seed(:exsss, {1, 2, 3})
     radices = [2, 3, 10, 16, 26, 36, 62, 255, 256, 1000, 65535, 65536]
 
-    for it <- 0..399 do
+    for it <- 0..1999 do
       radix = Enum.at(radices, rem(it, length(radices)))
       key = :crypto.strong_rand_bytes(Enum.at([16, 24, 32], rem(it, 3)))
       tw = :crypto.strong_rand_bytes(:rand.uniform(40) - 1)
-      n = 1 + :rand.uniform(150)
+      n = 1 + :rand.uniform(if rem(it, 2) == 1, do: 40, else: 150)
 
       if FF1.length_ok?(radix, n) do
         x = for _ <- 1..n, do: :rand.uniform(radix) - 1
         c = FF1.new(key, radix)
-        assert FF1.decrypt(c, tw, FF1.encrypt(c, tw, x)) == x
+        ct = FF1.encrypt(c, tw, x)
+        assert FF1.decrypt(c, tw, ct) == x
+        Process.put({FF1, :force_general}, true)
+        assert FF1.encrypt(FF1.new(key, radix), tw, x) == ct
+        Process.delete({FF1, :force_general})
       end
     end
   end
