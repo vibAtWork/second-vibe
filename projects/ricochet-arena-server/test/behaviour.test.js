@@ -197,3 +197,32 @@ test('anti-cheat adds little time per tick, even in a full room', () => {
   assert.ok(on < 4, 'well inside the 40 ms tick');
   assert.ok(on - off < 2, 'detector costs < 2 ms per tick');
 });
+
+test('flags are reported to every player, with every snapshot', () => {
+  const { room, list } = arena([['Sus', wanderer], ['Ann', wanderer], ['Bea', wanderer]], { ticks: FRAMES_FROZEN + 5, seed: 8 });
+  const msgs = [];
+  list[1].c.send = m => msgs.push(m);
+  room.onVerdict(list[0].c.id, 'flag', 'unusually many ricochet kill shots', {});
+  room.tick(); room.tick();
+  const snaps = msgs.filter(m => m.t === 's');
+  assert.ok(snaps[0].ev.some(e => e.type === 'flag' && e.name === 'Sus'), 'announced once as an event');
+  for (const s of snaps) assert.deepEqual(s.flags, [[list[0].c.id, ['unusually many ricochet kill shots'], 0, 2]], 'and listed in every snapshot');
+});
+
+test('players can vote a flagged player out by majority; votes are limited to flagged players', () => {
+  const { room, list } = arena([['Sus', wanderer], ['Ann', wanderer], ['Bea', wanderer], ['Cy', wanderer]], { ticks: FRAMES_FROZEN + 5, seed: 8 });
+  const [sus, ann, bea, cy] = list.map(p => p.c);
+  room.handle(ann, { t: 'vote', id: bea.id });           // Bea isn't flagged: ignored
+  assert.ok(room.seats.has(bea.id));
+  room.onVerdict(sus.id, 'flag', 'inhumanly fast reactions', {});
+  room.handle(sus, { t: 'vote', id: sus.id });           // can't vote on yourself
+  room.handle(ann, { t: 'vote', id: sus.id });
+  room.handle(ann, { t: 'vote', id: sus.id });           // one vote per player
+  assert.ok(room.seats.has(sus.id), '1 of 3 is not a majority');
+  room.handle(bea, { t: 'vote', id: sus.id });           // 2 of 3
+  assert.ok(!room.seats.has(sus.id), 'majority removes the flagged player');
+  assert.match(sus.kicked, /voted out/);
+  room.tick();
+  assert.ok(!room.game.players.has(sus.id));
+  assert.ok(room.reports.some(r => r.reason === 'player vote'));
+});

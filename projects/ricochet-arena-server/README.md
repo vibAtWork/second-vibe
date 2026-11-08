@@ -106,7 +106,17 @@ watches every seat on the server (and on a P2P host) without affecting the game:
 | Speed hack attempt | input frames keep arriving faster than real time (they're dropped anyway) | flag |
 | Lag switch | inputs stop arriving | tank keeps its last input through hiccups; idles only after 1.5 s of silence |
 
-A kicked player sees why, and everyone else sees "<name> was removed (reason)". Address bans
+**Everything is reported to the players, so the server can run unattended:**
+
+* **Flags** (suspicions that aren't strong enough for an automatic kick) are announced to
+  everyone in the room with a banner. The suspect gets a ⚠ on the scoreboard, and a panel
+  under the game lists every flag with its reason. The flagged player sees it too.
+* **Players decide:** anyone else playing can press **Vote to remove**, and a strict majority of
+  the other players removes the flagged player. Votes are only possible against players the
+  detector flagged, so a group can't vote out someone innocent.
+* **Kicks:** the kicked player sees why, and everyone else sees "<name> was removed (reason)".
+* The admin page (`/admin/reports`) is optional; it shows the same information plus evidence numbers.
+ Address bans
 are **off** by default, because friends and family often share one IP and a bot is simply
 detected again. Set `BAN_MINUTES` to enable them. Flags never affect play. They go to the server log and to
 `GET /admin/reports?token=…`, which only exists when `ADMIN_TOKEN` is set.

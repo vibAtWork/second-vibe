@@ -183,7 +183,7 @@ export function createRenderer(canvas) {
       const cx = x0 + slotW * i + slotW / 2;
       drawTank(50, cx - 26, y0 + 40, 0, p.color, { weapon: v.weaponOf(p.id) });
       ctx.fillStyle = '#2a2f38'; ctx.textAlign = 'left';
-      ctx.font = '600 13px system-ui, sans-serif'; ctx.fillText((v.mine.has(p.id) ? '▸ ' : '') + p.name, cx - 10, y0 + 32, slotW - 30);
+      ctx.font = '600 13px system-ui, sans-serif'; ctx.fillText((v.mine.has(p.id) ? '▸ ' : '') + (v.flagged?.has(p.id) ? '⚠ ' : '') + p.name, cx - 10, y0 + 32, slotW - 30);
       ctx.font = '700 22px system-ui, sans-serif'; ctx.fillText(String(p.score), cx - 10, y0 + 56);
     });
     ctx.textAlign = 'right'; ctx.font = '11px system-ui, sans-serif'; ctx.fillStyle = '#8a8f99';
@@ -192,8 +192,9 @@ export function createRenderer(canvas) {
 
   function centerText(text, y, font, color, outline) {
     ctx.textAlign = 'center'; ctx.font = font;
-    if (outline) { ctx.lineWidth = 5; ctx.strokeStyle = outline; ctx.strokeText(text, VIEW_W / 2, y); }
-    ctx.fillStyle = color; ctx.fillText(text, VIEW_W / 2, y);
+    const max = VIEW_W - 40; // long messages shrink to fit instead of running off the edges
+    if (outline) { ctx.lineWidth = 5; ctx.strokeStyle = outline; ctx.strokeText(text, VIEW_W / 2, y, max); }
+    ctx.fillStyle = color; ctx.fillText(text, VIEW_W / 2, y, max);
   }
 
   // v: { maze, poses, bullets, lasers, crates, spinOf, colorOf, weaponOf, players, mine, rtt, frozen, banner, cheat, spectating }

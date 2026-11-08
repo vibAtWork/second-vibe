@@ -30,6 +30,8 @@ export function decodeList(kind, rows = []) {
 // Decode a whole snapshot message into plain objects (with id lookups).
 export function decodeSnapshot(s) {
   const out = { tick: s.tick, frozen: s.frozen, end: s.end, ack: s.ack || {}, ev: s.ev || [] };
+  // anti-cheat suspicions: [{ id, reasons, votes, needed }]
+  out.flags = (s.flags || []).map(([id, reasons, votes, needed]) => ({ id, reasons, votes, needed }));
   for (const kind of Object.keys(FIELDS)) out[kind] = decodeList(kind, s[kind]);
   out.tankById = new Map(out.tanks.map(t => [t.id, t]));
   out.bulletById = new Map(out.bullets.map(b => [b.id, b]));

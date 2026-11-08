@@ -11,6 +11,8 @@
 //    tick is published as {ops, inputs, state hash} so peers can re-run and audit it
 //  * behavioural detection (anticheat.js) flags or kicks bots and aim assistance;
 //    kicked connections can't rejoin the room
+//  * everything is reported to the players themselves (no admin needed): flags are
+//    shown to everyone and the other players can vote a flagged player out
 //  * a seat whose inputs stop arriving for STARVE_TICKS (1.5 s, far longer than a
 //    Wi-Fi hiccup) goes idle instead of repeating its last input forever
 //  * none of the anti-cheat may hurt honest play: the detector is isolated (an
@@ -60,6 +62,8 @@ export class HostRoom {
     this.mode = anticheat;
     this.onKick = onKick;
     this.reports = [];        // [{ time, tick, id, name, level, reason, evidence }]
+    this.flags = new Map();   // flagged player id -> { reasons: [], votes: Set<conn> }
+    this.notices = [];        // events to announce with the next snapshot
     this.watch = anticheat === 'off' ? null : new CheatWatch({ onVerdict: (...a) => this.onVerdict(...a) });
     this.verifiable = verifiable;
     this.log = log;
@@ -93,6 +97,7 @@ export class HostRoom {
     conn.seatIds.splice(i, 1);
     this.seats.delete(id);
     this.watch?.forget(id);
+    this.flags.delete(id);
     this.ops.push(['remove', id]);
   }
 
@@ -116,7 +121,37 @@ export class HostRoom {
     this.reports.push(report);
     if (this.reports.length > 200) this.reports.shift();
     this.log(`anti-cheat ${level}: ${name} (#${id}) - ${reason} ${JSON.stringify(evidence)}`);
-    if (level === 'kick' && this.mode === 'kick') this.kick(id, reason);
+    if (level === 'kick' && this.mode === 'kick') return this.kick(id, reason);
+    if (this.seats.has(id)) this.flag(id, reason); // report-only verdicts are shown to every player
+  }
+
+  // Tell everyone (including the player) about a suspicion; others may vote them out.
+  flag(id, reason) {
+    let f = this.flags.get(id);
+    if (!f) { f = { reasons: [], votes: new Set() }; this.flags.set(id, f); }
+    if (f.reasons.includes(reason)) return;
+    f.reasons.push(reason);
+    this.notices.push({ type: 'flag', id, name: this.game.players.get(id)?.name ?? '?', reason });
+  }
+
+  // Players who can vote on `id`: connections with a tank in the game, other than the suspect's.
+  voters(id) {
+    const suspect = this.seats.get(id)?.conn;
+    return [...this.conns].filter(c => c !== suspect && c.seatIds.length > 0);
+  }
+  votesNeeded(id) { return Math.floor(this.voters(id).length / 2) + 1; } // strict majority
+
+  vote(conn, id) {
+    const f = this.flags.get(id);
+    if (!f || !this.voters(id).includes(conn)) return; // only flagged players, only by other players
+    f.votes.add(conn);
+    for (const v of f.votes) if (!this.conns.has(v) || !v.seatIds.length) f.votes.delete(v);
+    const name = this.game.players.get(id)?.name ?? '?';
+    this.log(`vote to remove ${name} (#${id}): ${f.votes.size}/${this.votesNeeded(id)}`);
+    if (f.votes.size >= this.votesNeeded(id)) {
+      this.reports.push({ time: Date.now(), tick: this.game.tick, id, name, level: 'kick', reason: 'player vote', evidence: { flags: f.reasons } });
+      this.kick(id, `voted out by the other players (flagged: ${f.reasons.join(', ')})`);
+    }
   }
 
   // Remove a cheating player; their connection may not join again.
@@ -129,6 +164,7 @@ export class HostRoom {
     conn.seatIds.splice(conn.seatIds.indexOf(id), 1);
     this.seats.delete(id);
     this.watch?.forget(id);
+    this.flags.delete(id);
     this.ops.push(['kick', id, reason]);
     this.onKick(conn, reason);
   }
@@ -147,6 +183,7 @@ export class HostRoom {
     if (msg.t === 'join') this.join(conn, msg);
     else if (msg.t === 'in') this.input(conn, msg);
     else if (msg.t === 'leave') this.dropSeat(conn, msg.id);
+    else if (msg.t === 'vote' && Number.isInteger(msg.id)) this.vote(conn, msg.id);
     else if (msg.t === 'ping' && Number.isFinite(msg.c)) conn.send({ t: 'pong', c: msg.c });
   }
 
@@ -213,6 +250,8 @@ export class HostRoom {
     }
     g.step(inputs);
     const ev = kicked.concat(g.drainEvents());
+    const notices = this.notices;
+    this.notices = [];
     this.runDetector(g, used, ev);
     if (g.maze && g.maze.seed !== this.lastMazeSeed) {
       this.lastMazeSeed = g.maze.seed;
@@ -220,7 +259,9 @@ export class HostRoom {
       for (const c of this.conns) c.send(mm);
     }
     const snap = g.snapshot();
-    snap.ev = ev;
+    snap.ev = ev.concat(notices);
+    // Current suspicions travel with every snapshot, so late joiners and lost packets still see them.
+    snap.flags = [...this.flags].map(([id, f]) => [id, f.reasons, f.votes.size, this.votesNeeded(id)]);
     const logMsg = this.verifiable && { t: 'log', tick: g.tick, ops, in: used, h: g.hash() };
     for (const c of this.conns) {
       const ack = {};

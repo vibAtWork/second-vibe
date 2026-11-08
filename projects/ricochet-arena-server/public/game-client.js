@@ -141,6 +141,7 @@ export function startClient(createTransport) {
     clockOffset = clockOffset == null ? best : clockOffset + (best - clockOffset) * 0.1;
     for (const ev of s.ev) onEvent(ev);
     reconcile(s);
+    showReports(s);
   }
 
   // Prediction: start from the authoritative tank at the acknowledged input,
@@ -178,6 +179,44 @@ export function startClient(createTransport) {
       case 'win': banner = { text: `${nameOf(ev.id)} wins the round!`, color: colorOf(ev.id), until: performance.now() + 2000 }; break;
       case 'draw': banner = { text: 'Draw!', color: '#555', until: performance.now() + 2000 }; break;
       case 'cheater': banner = { text: `${ev.name} was removed (${ev.reason})`, color: '#c33', until: performance.now() + 5000 }; break;
+      case 'flag': {
+        const me = seats.some(s => s.id === ev.id);
+        banner = { text: me ? `Anti-cheat flagged you: ${ev.reason}` : `⚠ Anti-cheat flagged ${ev.name}: ${ev.reason}`, color: '#c77700', until: performance.now() + 6000 };
+        break;
+      }
+    }
+  }
+
+  // ---- anti-cheat reports panel: every player sees who is suspected and why,
+  // and can vote to remove a flagged player (a majority of the others removes them)
+  const voted = new Set();
+  let shownFlags = '';
+  function showReports(s) {
+    const key = JSON.stringify([s.flags, seats.map(x => x.id), [...voted]]);
+    if (key === shownFlags) return;
+    shownFlags = key;
+    const box = $('reports');
+    if (!box) return;
+    box.hidden = !s.flags.length;
+    box.replaceChildren();
+    if (!s.flags.length) return;
+    const title = document.createElement('strong');
+    title.textContent = 'Anti-cheat reports';
+    box.append(title);
+    const playing = seats.some(x => x.id != null);
+    for (const f of s.flags) {
+      const row = document.createElement('div');
+      const mine = seats.some(x => x.id === f.id);
+      const who = mine ? 'You' : (s.playerById.get(f.id)?.name ?? '?');
+      row.append(`⚠ ${who}: ${f.reasons.join('; ')} - votes to remove ${f.votes}/${f.needed} `);
+      if (mine) row.append('(other players can vote to remove you)');
+      else if (playing && !voted.has(f.id)) {
+        const b = document.createElement('button');
+        b.textContent = 'Vote to remove';
+        b.onclick = () => { voted.add(f.id); net.send({ t: 'vote', id: f.id }); shownFlags = ''; showReports(latest); };
+        row.append(b);
+      } else if (voted.has(f.id)) row.append('(you voted)');
+      box.append(row);
     }
   }
 
@@ -240,7 +279,7 @@ export function startClient(createTransport) {
     draw({
       maze, poses, bullets: st?.bullets || [], lasers: st?.lasers || [], crates: st?.crates || [],
       spinOf: id => st?.spinByOwner.get(id) || 0, colorOf, weaponOf: id => latest?.tankById.get(id)?.weapon || 0,
-      players: latest?.players || [], mine, rtt, frozen: latest?.frozen || 0, banner, cheat, spectating: !seats.length,
+      players: latest?.players || [], flagged: new Set((latest?.flags || []).map(f => f.id)), mine, rtt, frozen: latest?.frozen || 0, banner, cheat, spectating: !seats.length,
     });
   }
 
