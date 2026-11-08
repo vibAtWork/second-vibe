@@ -10,7 +10,11 @@
  *   3. Feistel halves stay numbers across rounds (NUM/STR only at entry/exit).
  *   4. Fast path when radix^v < 2^96: halves are unsigned __int128, the single
  *      varying Q block is one 128-bit XOR, S = R (d <= 16), and the modular
- *      reduction is a hardware 128/64 division. Larger domains use BIGNUM.
+ *      reduction is a hardware 128/64 division (Moller-Granlund reciprocal for
+ *      moduli >= 2^64).
+ *   4b. Limb path up to 2^4096: fixed-width little-endian u64 limb arrays,
+ *      Knuth algorithm D for y mod radix^m (1-2 quotient limbs), no allocation.
+ *      BIGNUM is only the fallback beyond that (and the test oracle).
  *   5. Digit extraction divides by radix with a precomputed reciprocal.
  */
 #include "ff1.h"
@@ -243,6 +247,131 @@ static int check_length(unsigned radix, size_t n)
     return 0;
 }
 
+/* ---- limb path ---- */
+
+static int make_lmod(struct ff1_lmod *lm, const BIGNUM *m, int L)
+{
+    uint8_t buf[FF1_MAXL * 8];
+    memset(lm, 0, sizeof(*lm));
+    if (BN_bn2lebinpad(m, buf, L * 8) != L * 8)
+        return 0;
+    for (int i = 0; i < L; i++) {
+        uint64_t w = 0;
+        for (int k = 7; k >= 0; k--)
+            w = (w << 8) | buf[i * 8 + k];
+        lm->m[i] = w;
+    }
+    lm->n = L;
+    while (lm->n > 1 && lm->m[lm->n - 1] == 0)
+        lm->n--;
+    lm->s = __builtin_clzll(lm->m[lm->n - 1]);
+    for (int i = lm->n - 1; i >= 0; i--)
+        lm->dn[i] = (lm->m[i] << lm->s) | (lm->s && i ? lm->m[i - 1] >> (64 - lm->s) : 0);
+    return 1;
+}
+
+/* r (L limbs) = y (ly limbs) mod M, Knuth algorithm D (remainder only). */
+static void limb_rem(const uint64_t *y, int ly, const struct ff1_lmod *M, uint64_t *r, int L)
+{
+    const int n = M->n, s = M->s;
+    memset(r, 0, (size_t)L * 8);
+    if (ly < n) { /* y < 2^(64(n-1)) <= M */
+        memcpy(r, y, (size_t)ly * 8);
+        return;
+    }
+    uint64_t un[FF1_MAXL + 3];
+    un[ly] = s ? y[ly - 1] >> (64 - s) : 0;
+    for (int i = ly - 1; i > 0; i--)
+        un[i] = (y[i] << s) | (s ? y[i - 1] >> (64 - s) : 0);
+    un[0] = y[0] << s;
+    const uint64_t *dn = M->dn;
+    const uint64_t dtop = dn[n - 1], dsec = n >= 2 ? dn[n - 2] : 0;
+    for (int j = ly - n; j >= 0; j--) {
+        u128 qhat, rhat;
+        if (un[j + n] < dtop) {
+            uint64_t rr;
+            qhat = divrem_128_64(un[j + n], un[j + n - 1], dtop, &rr);
+            rhat = rr;
+        } else { /* un[j+n] == dtop */
+            qhat = UINT64_MAX;
+            rhat = (u128)un[j + n - 1] + dtop;
+        }
+        const uint64_t u2 = j + n >= 2 ? un[j + n - 2] : 0;
+        while ((rhat >> 64) == 0 && qhat * dsec > ((rhat << 64) | u2)) {
+            qhat--;
+            rhat += dtop;
+        }
+        uint64_t borrow = 0, carry = 0;
+        for (int i = 0; i < n; i++) {
+            u128 pr = qhat * dn[i] + carry;
+            carry = (uint64_t)(pr >> 64);
+            uint64_t pl = (uint64_t)pr, u = un[i + j];
+            uint64_t t = u - pl, b1 = u < pl;
+            un[i + j] = t - borrow;
+            borrow = b1 | (t < borrow);
+        }
+        uint64_t u = un[j + n], t = u - carry, b1 = u < carry;
+        un[j + n] = t - borrow;
+        if (b1 | (t < borrow)) { /* qhat was one too large: add back */
+            uint64_t cy = 0;
+            for (int i = 0; i < n; i++) {
+                u128 sm = (u128)un[i + j] + dn[i] + cy;
+                un[i + j] = (uint64_t)sm;
+                cy = (uint64_t)(sm >> 64);
+            }
+            un[j + n] += cy;
+        }
+    }
+    for (int i = 0; i < n; i++)
+        r[i] = s ? (un[i] >> s) | (un[i + 1] << (64 - s)) : un[i];
+}
+
+static inline int limb_geq(const uint64_t *a, const uint64_t *b, int L)
+{
+    for (int i = L - 1; i >= 0; i--)
+        if (a[i] != b[i])
+            return a[i] > b[i];
+    return 1;
+}
+
+/* a = (a + r) mod m, all < m, L limbs. */
+static inline void limb_addmod(uint64_t *a, const uint64_t *r, const uint64_t *m, int L)
+{
+    uint64_t cy = 0;
+    for (int i = 0; i < L; i++) {
+        u128 sm = (u128)a[i] + r[i] + cy;
+        a[i] = (uint64_t)sm;
+        cy = (uint64_t)(sm >> 64);
+    }
+    if (cy || limb_geq(a, m, L)) {
+        uint64_t bw = 0;
+        for (int i = 0; i < L; i++) {
+            uint64_t t = a[i] - m[i], b1 = a[i] < m[i];
+            a[i] = t - bw;
+            bw = b1 | (t < bw);
+        }
+    }
+}
+
+/* a = (a - r) mod m, all < m, L limbs. */
+static inline void limb_submod(uint64_t *a, const uint64_t *r, const uint64_t *m, int L)
+{
+    uint64_t bw = 0;
+    for (int i = 0; i < L; i++) {
+        uint64_t t = a[i] - r[i], b1 = a[i] < r[i];
+        a[i] = t - bw;
+        bw = b1 | (t < bw);
+    }
+    if (bw) {
+        uint64_t cy = 0;
+        for (int i = 0; i < L; i++) {
+            u128 sm = (u128)a[i] + m[i] + cy;
+            a[i] = (uint64_t)sm;
+            cy = (uint64_t)(sm >> 64);
+        }
+    }
+}
+
 static int compute_params(ff1_ctx *c, size_t n, size_t t)
 {
     ff1_params *p = &c->p;
@@ -256,7 +385,8 @@ static int compute_params(ff1_ctx *c, size_t n, size_t t)
 
     /* radix^v < 2^96  =>  b <= 12, d <= 16: everything fits in a u128. */
     u128 pv = 1;
-    p->fast = !c->force_bignum;
+    p->limbs = 0;
+    p->fast = !c->force_path;
     for (size_t k = 0; k < p->v && p->fast; k++) {
         pv *= c->radix;
         if (pv >> 96)
@@ -283,6 +413,11 @@ static int compute_params(ff1_ctx *c, size_t n, size_t t)
                  BN_copy(tmp, p->bmod_v) && BN_sub_word(tmp, 1);
         if (ok)
             p->b = (BN_num_bits(tmp) + 7) / 8;
+        int L = (BN_num_bits(p->bmod_v) + 63) / 64;
+        if (ok && c->force_path != 2 && L <= FF1_MAXL) {
+            p->limbs = L;
+            ok = make_lmod(&p->lm_u, p->bmod_u, L) && make_lmod(&p->lm_v, p->bmod_v, L);
+        }
         BN_CTX_end(c->bn);
         if (!ok) {
             free_params(p);
@@ -517,6 +652,124 @@ out:
     return ret;
 }
 
+static void num_limbs(const ff1_ctx *c, const uint16_t *x, size_t len, uint64_t *res, int L)
+{
+    memset(res, 0, (size_t)L * 8);
+    for (size_t i = 0; i < len;) {
+        size_t end = i + c->group_len;
+        if (end > len)
+            end = len;
+        uint64_t acc = 0, pw = 1;
+        for (; i < end; i++) {
+            acc = acc * c->radix + x[i];
+            pw *= c->radix;
+        }
+        uint64_t cy = acc;
+        for (int k = 0; k < L; k++) { /* res = res * pw + acc */
+            u128 pr = (u128)res[k] * pw + cy;
+            res[k] = (uint64_t)pr;
+            cy = (uint64_t)(pr >> 64);
+        }
+    }
+}
+
+/* STR^m_radix; destroys v. */
+static void str_limbs(const ff1_ctx *c, uint64_t *v, int L, uint16_t *out, size_t m)
+{
+    size_t i = m;
+    int top = L; /* v[top..] are zero */
+    while (i > 0) {
+        while (top > 0 && v[top - 1] == 0)
+            top--;
+        uint64_t r = 0;
+        for (int k = top - 1; k >= 0; k--)
+            v[k] = divrem_128_64(r, v[k], c->group_pow, &r);
+        str_group(c, r, out, &i);
+    }
+}
+
+static int crypt_limb(ff1_ctx *c, const uint8_t *T, size_t t, const uint16_t *x,
+                      uint16_t *out, int enc)
+{
+    const ff1_params *p = &c->p;
+    const int b = p->b, d = p->d, L = p->limbs, ly = (d + 7) / 8;
+    size_t zeros = (size_t)(-(long long)(t + b + 1)) & 15;
+    size_t round_idx = t + zeros, qlen = round_idx + 1 + b, var_off;
+    const int n_blocks = (d + BLOCK - 1) / BLOCK;
+    uint8_t X[BLOCK];
+    if (!prefix_state(c, T, t, round_idx, X, &var_off))
+        return FF1_ERR_INTERNAL;
+    const size_t vlen = qlen - var_off; /* <= 15 + 1 + 8*FF1_MAXL */
+    uint8_t V[16 + 8 * FF1_MAXL + 16], S[8 * FF1_MAXL + 32];
+    for (size_t k = 0; k < vlen; k++)
+        V[k] = var_off + k < round_idx ? qconst(T, t, var_off + k) : 0;
+    const size_t ridx = round_idx - var_off;
+    uint8_t *numdst = V + ridx + 1; /* b bytes */
+
+    uint64_t Abuf[FF1_MAXL], Bbuf[FF1_MAXL], y[FF1_MAXL + 1], r[FF1_MAXL];
+    uint64_t *A = Abuf, *B = Bbuf;
+    num_limbs(c, x, p->u, A, L);
+    num_limbs(c, x + p->u, p->v, B, L);
+
+    for (int k = 0; k < 10; k++) {
+        const int i = enc ? k : 9 - k;
+        const uint64_t *src = enc ? B : A;
+        V[ridx] = (uint8_t)i;
+        { /* NUM(src) as b big-endian bytes: whole limbs from the end, then the top part */
+            const int full = b / 8, part = b % 8;
+            for (int q = 0; q < full; q++) {
+                uint64_t w = bswap64(src[q]);
+                memcpy(numdst + b - 8 * (q + 1), &w, 8);
+            }
+            for (int q = 0; q < part; q++)
+                numdst[part - 1 - q] = (uint8_t)(src[full] >> (8 * q));
+        }
+        uint8_t R[BLOCK];
+        memcpy(R, X, BLOCK);
+        for (size_t off = 0; off < vlen; off += BLOCK) {
+            for (int j = 0; j < BLOCK; j++)
+                R[j] ^= V[off + j];
+            if (!aes_block(c, R, R))
+                return FF1_ERR_INTERNAL;
+        }
+        memcpy(S, R, BLOCK);
+        uint32_t j0 = ((uint32_t)R[12] << 24) | ((uint32_t)R[13] << 16) |
+                      ((uint32_t)R[14] << 8) | R[15];
+        for (int j = 1; j < n_blocks; j++) {
+            uint8_t *blk = S + j * BLOCK;
+            uint32_t w = j0 ^ (uint32_t)j;
+            memcpy(blk, R, 12);
+            blk[12] = (uint8_t)(w >> 24);
+            blk[13] = (uint8_t)(w >> 16);
+            blk[14] = (uint8_t)(w >> 8);
+            blk[15] = (uint8_t)w;
+        }
+        if (n_blocks > 1 && EVP_Cipher(c->aes, S + BLOCK, S + BLOCK, (n_blocks - 1) * BLOCK) <= 0)
+            return FF1_ERR_INTERNAL;
+        { /* y = NUM_2(S[0..d)), d is a multiple of 4 */
+            const int full = d / 8;
+            for (int q = 0; q < full; q++) {
+                uint64_t w;
+                memcpy(&w, S + d - 8 * (q + 1), 8);
+                y[q] = bswap64(w);
+            }
+            if (d & 4)
+                y[full] = ((uint64_t)S[0] << 24) | ((uint64_t)S[1] << 16) | ((uint64_t)S[2] << 8) | S[3];
+        }
+        const struct ff1_lmod *M = (i & 1) ? &p->lm_v : &p->lm_u;
+        limb_rem(y, ly, M, r, L);
+        if (enc) {
+            limb_addmod(A, r, M->m, L);
+        } else {
+            limb_submod(B, r, M->m, L);
+        }
+        uint64_t *tmp = A; A = B; B = tmp;
+    }
+    str_limbs(c, A, L, out, p->u);
+    str_limbs(c, B, L, out + p->u, p->v);
+    return FF1_OK;
+}
+
 static int crypt(ff1_ctx *c, const uint8_t *T, size_t t, const uint16_t *x,
                  uint16_t *out, size_t n, int enc)
 {
@@ -527,7 +780,9 @@ static int crypt(ff1_ctx *c, const uint8_t *T, size_t t, const uint16_t *x,
             return FF1_ERR_DIGIT;
     if (t > 0xffffffffUL || !compute_params(c, n, t))
         return FF1_ERR_INTERNAL;
-    return c->p.fast ? crypt_fast(c, T, t, x, out, enc) : crypt_bn(c, T, t, x, out, enc);
+    if (c->p.fast)
+        return crypt_fast(c, T, t, x, out, enc);
+    return c->p.limbs ? crypt_limb(c, T, t, x, out, enc) : crypt_bn(c, T, t, x, out, enc);
 }
 
 int ff1_encrypt(ff1_ctx *c, const uint8_t *tweak, size_t tweak_len,

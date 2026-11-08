@@ -13,6 +13,8 @@
 
 typedef unsigned __int128 ff1_u128;
 
+#define FF1_MAXL 64 /* limb path handles radix^v < 2^4096 */
+
 /* Per-(n, tweak length) values, cached on the context. */
 typedef struct {
     int valid;
@@ -27,6 +29,13 @@ typedef struct {
         uint64_t v;         /* reciprocal */
     } rec_u, rec_v;
     BIGNUM *bmod_u, *bmod_v;
+    /* limb path (2^96 <= radix^v < 2^(64*FF1_MAXL)): little-endian u64 limbs */
+    int limbs;              /* L = limbs of radix^v; halves are stored in L limbs */
+    struct ff1_lmod {
+        int n, s;           /* limb count, normalization shift */
+        uint64_t m[FF1_MAXL];  /* modulus, zero-padded to L limbs */
+        uint64_t dn[FF1_MAXL]; /* modulus << s (n limbs) */
+    } lm_u, lm_v;
 } ff1_params;
 
 typedef struct {
@@ -37,7 +46,7 @@ typedef struct {
     int group_len;      /* digits of radix per uint64 group */
     uint64_t group_pow; /* radix^group_len */
     uint64_t magic;     /* ceil(2^64 / radix), for division by radix */
-    int force_bignum;   /* testing: disable the 128-bit fast path */
+    int force_path;     /* testing: 0 auto, 1 force limb path, 2 force BIGNUM path */
     ff1_params p;
 } ff1_ctx;
 

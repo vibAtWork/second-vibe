@@ -68,9 +68,9 @@ int main(void)
     int trips = 0;
     for (int it = 0; it < 2000; it++) {
         unsigned radix = radices[it % 12];
-        size_t kl = (size_t[]){16, 24, 32}[it % 3], tl = rnd() % 40, n = 2 + (it % 2 ? rnd() % 40 : rnd() % 150);
+        size_t kl = (size_t[]){16, 24, 32}[it % 3], tl = rnd() % 40, n = 2 + (it % 7 == 0 ? rnd() % 600 : it % 2 ? rnd() % 40 : rnd() % 150);
         uint8_t key[32], tw[40];
-        uint16_t x[160], y[160], z[160];
+        uint16_t x[640], y[640], z[640];
         for (size_t i = 0; i < kl; i++) key[i] = (uint8_t)rnd();
         for (size_t i = 0; i < tl; i++) tw[i] = (uint8_t)rnd();
         for (size_t i = 0; i < n; i++) x[i] = (uint16_t)(rnd() % radix);
@@ -82,16 +82,19 @@ int main(void)
             printf("round trip failed radix=%u n=%zu\n", radix, n);
             failures++;
         }
-        /* The 128-bit fast path and the BIGNUM path must agree exactly. */
-        ff1_ctx s;
-        uint16_t w[160];
-        ff1_init(&s, key, kl, radix);
-        s.force_bignum = 1;
-        if (ff1_encrypt(&s, tw, tl, x, w, n) || memcmp(w, y, n * 2)) {
-            printf("fast/bignum mismatch radix=%u n=%zu\n", radix, n);
-            failures++;
+        /* The 128-bit fast path, the limb path and the BIGNUM path must agree. */
+        for (int fp = 1; fp <= 2; fp++) {
+            ff1_ctx s;
+            uint16_t w[640], z2[640];
+            ff1_init(&s, key, kl, radix);
+            s.force_path = fp;
+            if (ff1_encrypt(&s, tw, tl, x, w, n) || memcmp(w, y, n * 2) ||
+                ff1_decrypt(&s, tw, tl, w, z2, n) || memcmp(z2, x, n * 2)) {
+                printf("path %d mismatch radix=%u n=%zu\n", fp, radix, n);
+                failures++;
+            }
+            ff1_free(&s);
         }
-        ff1_free(&s);
         trips++;
         ff1_free(&c);
     }
@@ -106,7 +109,7 @@ int main(void)
     if (ff1_encrypt(&c, NULL, 0, buf, buf, 7) != FF1_ERR_DIGIT) failures++;
     ff1_free(&c);
 
-    printf("%s: 9 NIST vectors, %d random round trips (each also checked fast path vs BIGNUM path), validation checks; %d failures\n",
+    printf("%s: 9 NIST vectors, %d random round trips (each checked across fast, limb and BIGNUM paths), validation checks; %d failures\n",
            failures ? "FAIL" : "PASS", trips, failures);
     return failures != 0;
 }
