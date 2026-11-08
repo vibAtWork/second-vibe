@@ -20,6 +20,12 @@ typedef struct {
     int b, d, fast;
     uint8_t enc_p[16];      /* CIPH_K(P) */
     ff1_u128 mod_u, mod_v;  /* fast path: radix^u, radix^v */
+    struct ff1_recip {      /* Moller-Granlund reciprocal of a modulus */
+        int s;              /* normalization shift */
+        int wide;           /* modulus >= 2^64: 3-by-2 division */
+        ff1_u128 d;         /* modulus << s */
+        uint64_t v;         /* reciprocal */
+    } rec_u, rec_v;
     BIGNUM *bmod_u, *bmod_v;
 } ff1_params;
 

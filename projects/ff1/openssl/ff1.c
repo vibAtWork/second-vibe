@@ -67,6 +67,87 @@ static inline u128 rem_u128(u128 y, u128 m)
     return y % m;
 }
 
+/*
+ * Remainder by an invariant modulus with a precomputed reciprocal
+ * (Moller & Granlund, "Improved division by invariant integers", 2011):
+ * two multiplications instead of a hardware divide.
+ */
+static inline uint64_t rem_2by1(uint64_t u1, uint64_t u0, uint64_t d, uint64_t v)
+{
+    u128 q = (u128)v * u1 + (((u128)u1 << 64) | u0);
+    uint64_t q1 = (uint64_t)(q >> 64) + 1, q0 = (uint64_t)q;
+    uint64_t r = u0 - q1 * d;
+    if (r > q0)
+        r += d;
+    if (r >= d)
+        r -= d;
+    return r;
+}
+
+static inline u128 rem_3by2(uint64_t u2, uint64_t u1, uint64_t u0, u128 D, uint64_t v)
+{
+    uint64_t d1 = (uint64_t)(D >> 64), d0 = (uint64_t)D;
+    u128 q = (u128)v * u2 + (((u128)u2 << 64) | u1);
+    uint64_t q1 = (uint64_t)(q >> 64), q0 = (uint64_t)q;
+    uint64_t r1 = u1 - q1 * d1;
+    u128 r = ((((u128)r1 << 64) | u0) - (u128)d0 * q1) - D;
+    if ((uint64_t)(r >> 64) >= q0)
+        r += D;
+    if (r >= D)
+        r -= D;
+    return r;
+}
+
+static void make_recip(struct ff1_recip *rc, u128 m)
+{
+    if ((m >> 64) == 0) {
+        rc->wide = 0;
+        rc->s = __builtin_clzll((uint64_t)m);
+        uint64_t d = (uint64_t)m << rc->s;
+        rc->d = d;
+        rc->v = (uint64_t)(~(u128)0 / d); /* floor((2^128-1)/d) - 2^64, mod 2^64 */
+    } else {
+        rc->wide = 1;
+        rc->s = __builtin_clzll((uint64_t)(m >> 64));
+        u128 D = m << rc->s;
+        rc->d = D;
+        /* v = floor((2^192-1)/D) - 2^64 via restoring long division (once per length). */
+        u128 rem = 0;
+        uint64_t q = 0;
+        int top = 0; /* bit 128 of the running remainder */
+        for (int bit = 191; bit >= 0; bit--) {
+            top = (int)(rem >> 127);
+            rem = (rem << 1) | 1u; /* numerator is all ones */
+            int ge = top || rem >= D;
+            if (ge)
+                rem -= D;
+            if (bit < 64)
+                q = (q << 1) | (uint64_t)ge;
+        }
+        rc->v = q;
+    }
+}
+
+static inline u128 rem_recip(u128 y, const struct ff1_recip *rc)
+{
+#if defined(__x86_64__)
+    /* Measured: a hardware divq beats the 2-by-1 reciprocal for 64-bit moduli. */
+    if (!rc->wide)
+        return rem_u128(y, rc->d >> rc->s);
+#endif
+    const int s = rc->s;
+    uint64_t hi = (uint64_t)(y >> 64), lo = (uint64_t)y;
+    uint64_t u2 = s ? hi >> (64 - s) : 0;
+    uint64_t u1 = (hi << s) | (s ? lo >> (64 - s) : 0);
+    uint64_t u0 = lo << s;
+    if (!rc->wide) {
+        uint64_t d = (uint64_t)rc->d;
+        uint64_t r = rem_2by1(u2, u1, d, rc->v);
+        return rem_2by1(r, u0, d, rc->v) >> s;
+    }
+    return rem_3by2(u2, u1, u0, rc->d, rc->v) >> s;
+}
+
 static inline int bitlen128(u128 x)
 {
     uint64_t hi = (uint64_t)(x >> 64), lo = (uint64_t)x;
@@ -188,6 +269,8 @@ static int compute_params(ff1_ctx *c, size_t n, size_t t)
         p->mod_u = pu;
         p->mod_v = pv;
         p->b = (bitlen128(pv - 1) + 7) / 8;
+        make_recip(&p->rec_u, pu);
+        make_recip(&p->rec_v, pv);
     } else {
         BN_CTX_start(c->bn);
         BIGNUM *r = BN_CTX_get(c->bn), *e = BN_CTX_get(c->bn), *tmp = BN_CTX_get(c->bn);
@@ -307,7 +390,7 @@ static int crypt_fast(ff1_ctx *c, const uint8_t *T, size_t t, const uint16_t *x,
             if (!aes_block(c, blk, blk))
                 return FF1_ERR_INTERNAL;
             const u128 m = (i & 1) ? p->mod_v : p->mod_u;
-            u128 y = rem_u128(load_be128(blk) >> yshift, m);
+            u128 y = rem_recip(load_be128(blk) >> yshift, (i & 1) ? &p->rec_v : &p->rec_u);
             u128 cc = A + y;
             if (cc >= m)
                 cc -= m;
@@ -320,7 +403,7 @@ static int crypt_fast(ff1_ctx *c, const uint8_t *T, size_t t, const uint16_t *x,
             if (!aes_block(c, blk, blk))
                 return FF1_ERR_INTERNAL;
             const u128 m = (i & 1) ? p->mod_v : p->mod_u;
-            u128 y = rem_u128(load_be128(blk) >> yshift, m);
+            u128 y = rem_recip(load_be128(blk) >> yshift, (i & 1) ? &p->rec_v : &p->rec_u);
             u128 cc = B >= y ? B - y : B + (m - y);
             B = A;
             A = cc;
