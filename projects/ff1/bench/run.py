@@ -28,15 +28,20 @@ WORKLOADS = [
 ]
 
 JAVA_CP = "target/ff1-0.1.0.jar:target/lib/*"
+JAVA_HOME = os.environ.get("FF1_JAVA_HOME", "/usr/lib/jvm/java-25-openjdk-amd64")
+JAVA = os.path.join(JAVA_HOME, "bin", "java")
+# Lets FF1.java call the JDK's AES-NI intrinsic directly (see FF1.java).
+ADD_OPENS = "--add-opens=java.base/com.sun.crypto.provider=ALL-UNNAMED"
 
 # name -> (cwd, command prefix, kind)
 IMPLS = {
-    "java": ("java", ["java", "-cp", JAVA_CP, "ff1.Bench", "ours"], "ours"),
+    "java": ("java", [JAVA, ADD_OPENS, "-cp", JAVA_CP, "ff1.Bench", "ours"], "ours"),
+    "java-jce": ("java", [JAVA, "-cp", JAVA_CP, "ff1.Bench", "jce"], "ours"),
     "elixir": ("elixir", ["mix", "run", "bench/ff1bench.exs", "ours"], "ours"),
     "rust": ("rust", ["./target/release/ff1bench", "ours"], "ours"),
     "go": ("go", ["./ff1bench", "ours"], "ours"),
     "c-openssl": ("openssl", ["./ff1bench"], "ours"),
-    "java-bouncycastle": ("java", ["java", "-cp", JAVA_CP, "ff1.Bench", "bc"], "baseline"),
+    "java-bouncycastle": ("java", [JAVA, "-cp", JAVA_CP, "ff1.Bench", "bc"], "baseline"),
     "rust-fpe-crate": ("rust", ["./target/release/ff1bench", "fpe"], "baseline"),
     "go-capitalone": ("go", ["./ff1bench", "capitalone"], "baseline"),
 }
@@ -56,6 +61,7 @@ BUILDS = [
 
 def env_for(cwd):
     env = dict(os.environ)
+    env["JAVA_HOME"] = JAVA_HOME
     if cwd == "elixir":
         env["MIX_ENV"] = "prod"
     return env
@@ -65,6 +71,7 @@ def build():
     for cwd, cmd in BUILDS:
         print(f"[build] {cwd}: {' '.join(cmd)}", flush=True)
         e = dict(os.environ)
+        e["JAVA_HOME"] = JAVA_HOME
         if cwd == "elixir" and cmd[1] != "test":
             e["MIX_ENV"] = "prod"
         subprocess.run(cmd, cwd=os.path.join(ROOT, cwd), check=True, env=e,
@@ -72,9 +79,9 @@ def build():
 
 
 def tool_versions():
-    def first_line(cmd):
+    def first_line(cmd, cwd=None):
         try:
-            out = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd=cwd)
             lines = [l for l in (out.stdout + out.stderr).splitlines()
                      if l.strip() and not l.startswith("Picked up")]
             return lines[0].strip() if lines else "?"
@@ -92,13 +99,14 @@ def tool_versions():
         pass
     return {
         "CPU": f"{cpu} ({os.cpu_count()} vCPU), {platform.system()} {platform.release()}",
-        "Java": first_line(["java", "-version"]),
+        "Java": first_line([JAVA, "-version"]),
         "Elixir": " / ".join(
             l for l in subprocess.run(["elixir", "--version"], capture_output=True,
                                       text=True).stdout.splitlines() if l.strip()),
         "Rust": first_line(["rustc", "--version"]),
-        "Go": first_line(["go", "version"]),
-        "OpenSSL": first_line(["openssl", "version"]) + "; " + first_line(["cc", "--version"]),
+        "Go": first_line(["go", "version"], cwd=os.path.join(ROOT, "go")),
+        "OpenSSL": first_line(["openssl", "version"]) + "; " + first_line(["cc", "--version"])
+        + " (`-O3 -march=native`)",
     }
 
 
@@ -235,7 +243,8 @@ def main():
         cells = [f"{med[(i, wi, 'encrypt')] / best:.2f}×" for i in ours + base]
         lines.append(f"| {wl[0]} | " + " | ".join(cells) + " |")
 
-    pairs = [("java", "java-bouncycastle"), ("rust", "rust-fpe-crate"), ("go", "go-capitalone")]
+    pairs = [("java", "java-bouncycastle"), ("java-jce", "java-bouncycastle"),
+             ("rust", "rust-fpe-crate"), ("go", "go-capitalone")]
     pairs = [p for p in pairs if p[0] in impls and p[1] in impls]
     if pairs:
         lines.append("\n## This repository vs. the established library in the same language "
@@ -244,6 +253,25 @@ def main():
         lines.append("|" + "|".join(["---"] + ["---:"] * len(pairs)) + "|")
         for wi, wl in enumerate(WORKLOADS):
             cells = [f"{med[(b, wi, 'encrypt')] / med[(a, wi, 'encrypt')]:.2f}×" for a, b in pairs]
+            lines.append(f"| {wl[0]} | " + " | ".join(cells) + " |")
+
+    v1 = {}
+    v1_path = os.path.join(RESULTS, "v1", "results.csv")
+    if os.path.exists(v1_path):
+        with open(v1_path) as f:
+            for row in csv.DictReader(f):
+                v1[(row["workload"], row["impl"], row["op"])] = float(row["median_ns_per_op"])
+    v1_impls = [i for i in ours if any((wl[0], i, "encrypt") in v1 for wl in WORKLOADS)]
+    if v1_impls:
+        lines.append("\n## Speed-up vs. the first version (v1, 2026-11-07; encrypt)\n")
+        lines.append("| Workload | " + " | ".join(v1_impls) + " |")
+        lines.append("|" + "|".join(["---"] + ["---:"] * len(v1_impls)) + "|")
+        for wi, wl in enumerate(WORKLOADS):
+            cells = []
+            for i in v1_impls:
+                old_ns = v1.get((wl[0], i, "encrypt"))
+                cells.append(f"{fmt_ns(old_ns)} → {fmt_ns(med[(i, wi, 'encrypt')])} "
+                             f"({old_ns / med[(i, wi, 'encrypt')]:.1f}×)" if old_ns else "–")
             lines.append(f"| {wl[0]} | " + " | ".join(cells) + " |")
 
     lines.append("\n## Spread (encrypt, min–max µs across rounds)\n")
@@ -259,6 +287,9 @@ def main():
     lines.append("\n## Environment\n")
     for k, v in tool_versions().items():
         lines.append(f"- **{k}**: {v}")
+    lines.append("- `java` = AES via the JDK's AES-NI intrinsic class (needs `" + ADD_OPENS + "`); "
+                 "`java-jce` = same code through the standard JCE `Cipher` API.")
+    lines.append("- Rust built with `-C target-cpu=native`; C with `-O3 -march=native`.")
     lines.append("- Baselines: BouncyCastle bcprov-jdk18on 1.86 (`FPEFF1Engine`, default AES engine), "
                  "Rust `fpe` 0.7.0 (`FlexibleNumeralString`), Go `github.com/capitalone/fpe` v1.2.1 "
                  "(string API).")
