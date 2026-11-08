@@ -11,7 +11,10 @@
 //! 4. Fast path when radix^v < 2^96: halves are `u128`, the single varying Q
 //!    block is one 128-bit XOR, S = R (d <= 16), and the modular reduction is a
 //!    hardware 128/64 divide (or a Möller–Granlund 3-by-2 reciprocal division
-//!    for moduli >= 2^64). Larger domains use `num-bigint`.
+//!    for moduli >= 2^64).
+//! 4b. Limb path up to 2^4096: fixed-width little-endian `u64` limb arrays on the
+//!    stack, Knuth algorithm D for y mod radix^m, no allocation per round.
+//!    `num-bigint` is only the fallback beyond that (and the test oracle).
 //! 5. Digit extraction divides by the radix with a precomputed reciprocal.
 
 use aes::cipher::{BlockCipherEncrypt, KeyInit};
@@ -156,8 +159,138 @@ impl Recip {
     }
 }
 
+const MAXL: usize = 64;
+
+/// A modulus for the limb path: little-endian limbs plus its normalized form.
+struct LMod {
+    n: usize,
+    s: u32,
+    m: [u64; MAXL],  // zero-padded to L limbs
+    dn: [u64; MAXL], // m << s (n limbs)
+}
+
+impl LMod {
+    fn new(m: &BigUint) -> Box<Self> {
+        let digits = m.to_u64_digits();
+        let mut lm = Box::new(LMod { n: digits.len(), s: 0, m: [0; MAXL], dn: [0; MAXL] });
+        lm.m[..digits.len()].copy_from_slice(&digits);
+        lm.s = lm.m[lm.n - 1].leading_zeros();
+        for i in (0..lm.n).rev() {
+            let lo = if lm.s != 0 && i > 0 { lm.m[i - 1] >> (64 - lm.s) } else { 0 };
+            lm.dn[i] = (lm.m[i] << lm.s) | lo;
+        }
+        lm
+    }
+
+    /// r (L limbs) = y mod m, Knuth algorithm D (remainder only).
+    fn rem(&self, y: &[u64], r: &mut [u64]) {
+        let (n, s, ly) = (self.n, self.s, y.len());
+        r.fill(0);
+        if ly < n {
+            r[..ly].copy_from_slice(y);
+            return;
+        }
+        let mut un = [0u64; MAXL + 3];
+        un[ly] = if s != 0 { y[ly - 1] >> (64 - s) } else { 0 };
+        for i in (1..ly).rev() {
+            un[i] = (y[i] << s) | if s != 0 { y[i - 1] >> (64 - s) } else { 0 };
+        }
+        un[0] = y[0] << s;
+        let dn = &self.dn;
+        let dtop = dn[n - 1];
+        let dsec = if n >= 2 { dn[n - 2] } else { 0 };
+        for j in (0..=ly - n).rev() {
+            let (mut qhat, mut rhat): (u128, u128) = if un[j + n] < dtop {
+                let (q, r) = divrem_128_64(un[j + n], un[j + n - 1], dtop);
+                (q as u128, r as u128)
+            } else {
+                (u64::MAX as u128, un[j + n - 1] as u128 + dtop as u128)
+            };
+            let u2 = if j + n >= 2 { un[j + n - 2] } else { 0 };
+            while rhat >> 64 == 0 && qhat * dsec as u128 > ((rhat << 64) | u2 as u128) {
+                qhat -= 1;
+                rhat += dtop as u128;
+            }
+            let (mut borrow, mut carry) = (0u64, 0u64);
+            for i in 0..n {
+                let pr = qhat * dn[i] as u128 + carry as u128;
+                carry = (pr >> 64) as u64;
+                let (t, b1) = un[i + j].overflowing_sub(pr as u64);
+                let (t2, b2) = t.overflowing_sub(borrow);
+                un[i + j] = t2;
+                borrow = (b1 | b2) as u64;
+            }
+            let (t, b1) = un[j + n].overflowing_sub(carry);
+            let (t2, b2) = t.overflowing_sub(borrow);
+            un[j + n] = t2;
+            if b1 | b2 {
+                let mut cy = 0u64;
+                for i in 0..n {
+                    let sm = un[i + j] as u128 + dn[i] as u128 + cy as u128;
+                    un[i + j] = sm as u64;
+                    cy = (sm >> 64) as u64;
+                }
+                un[j + n] = un[j + n].wrapping_add(cy);
+            }
+        }
+        for i in 0..n {
+            r[i] = if s != 0 { (un[i] >> s) | (un[i + 1] << (64 - s)) } else { un[i] };
+        }
+    }
+}
+
+fn limb_geq(a: &[u64], b: &[u64]) -> bool {
+    for i in (0..a.len()).rev() {
+        if a[i] != b[i] {
+            return a[i] > b[i];
+        }
+    }
+    true
+}
+
+/// a = (a + r) mod m (all < m, same length).
+fn limb_addmod(a: &mut [u64], r: &[u64], m: &[u64]) {
+    let mut cy = false;
+    for i in 0..a.len() {
+        let (t, c1) = a[i].overflowing_add(r[i]);
+        let (t2, c2) = t.overflowing_add(cy as u64);
+        a[i] = t2;
+        cy = c1 | c2;
+    }
+    if cy || limb_geq(a, m) {
+        let mut bw = false;
+        for i in 0..a.len() {
+            let (t, b1) = a[i].overflowing_sub(m[i]);
+            let (t2, b2) = t.overflowing_sub(bw as u64);
+            a[i] = t2;
+            bw = b1 | b2;
+        }
+    }
+}
+
+/// a = (a - r) mod m (all < m, same length).
+fn limb_submod(a: &mut [u64], r: &[u64], m: &[u64]) {
+    let mut bw = false;
+    for i in 0..a.len() {
+        let (t, b1) = a[i].overflowing_sub(r[i]);
+        let (t2, b2) = t.overflowing_sub(bw as u64);
+        a[i] = t2;
+        bw = b1 | b2;
+    }
+    if bw {
+        let mut cy = false;
+        for i in 0..a.len() {
+            let (t, c1) = a[i].overflowing_add(m[i]);
+            let (t2, c2) = t.overflowing_add(cy as u64);
+            a[i] = t2;
+            cy = c1 | c2;
+        }
+    }
+}
+
 enum Moduli {
     Fast { mod_u: Recip, mod_v: Recip },
+    Limb { l: usize, mod_u: Box<LMod>, mod_v: Box<LMod> },
     Big { mod_u: BigUint, mod_v: BigUint },
 }
 
@@ -180,7 +313,7 @@ pub struct Ff1 {
     group_len: usize,
     group_pow: u64,
     magic: u64,
-    force_bignum: bool,
+    force_path: u8, // testing: 0 auto, 1 force limb path, 2 force num-bigint path
     params: Option<Params>,
 }
 
@@ -202,7 +335,7 @@ impl Ff1 {
             g += 1;
         }
         let magic = u64::MAX / radix as u64 + 1; // ceil(2^64 / radix)
-        Ok(Ff1 { aes, radix, group_len: g, group_pow: p, magic, force_bignum: false, params: None })
+        Ok(Ff1 { aes, radix, group_len: g, group_pow: p, magic, force_path: 0, params: None })
     }
 
     pub fn encrypt(&mut self, tweak: &[u8], x: &[u16]) -> Result<Vec<u16>, Error> {
@@ -245,7 +378,7 @@ impl Ff1 {
         let u = n / 2;
         let v = n - u;
         let r = self.radix as u128;
-        let mut pv: Option<u128> = if self.force_bignum { None } else { Some(1) };
+        let mut pv: Option<u128> = if self.force_path != 0 { None } else { Some(1) };
         for _ in 0..v {
             pv = pv.and_then(|p| p.checked_mul(r)).filter(|p| p >> 96 == 0);
         }
@@ -260,7 +393,12 @@ impl Ff1 {
                 let mod_u = big_r.pow(u as u32);
                 let mod_v = if v != u { &mod_u * &big_r } else { mod_u.clone() };
                 let b = ((&mod_v - 1u32).bits() as usize).div_ceil(8);
-                (b, Moduli::Big { mod_u, mod_v })
+                let l = (mod_v.bits() as usize).div_ceil(64);
+                if self.force_path != 2 && l <= MAXL {
+                    (b, Moduli::Limb { l, mod_u: LMod::new(&mod_u), mod_v: LMod::new(&mod_v) })
+                } else {
+                    (b, Moduli::Big { mod_u, mod_v })
+                }
             }
         };
         let d = (b + 7) & !3;
@@ -319,6 +457,9 @@ impl Ff1 {
                 let xc = u128::from_be_bytes(xs) ^ u128::from_be_bytes(cblk);
                 self.crypt_fast(p, xc, x, out, enc, mod_u, mod_v);
             }
+            Moduli::Limb { l, mod_u, mod_v } => {
+                self.crypt_limb(p, &xs, var_off, round_idx, &qconst, x, out, enc, *l, mod_u, mod_v);
+            }
             Moduli::Big { mod_u, mod_v } => {
                 self.crypt_big(p, &xs, var_off, round_idx, &qconst, x, out, enc, mod_u, mod_v);
             }
@@ -358,6 +499,125 @@ impl Ff1 {
         let (lo, hi) = out.split_at_mut(p.u);
         self.str128(a, lo);
         self.str128(b, hi);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn crypt_limb(
+        &self,
+        p: &Params,
+        xs: &[u8; BLOCK],
+        var_off: usize,
+        round_idx: usize,
+        qconst: &dyn Fn(usize) -> u8,
+        x: &[u16],
+        out: &mut [u16],
+        enc: bool,
+        l: usize,
+        mu: &LMod,
+        mv: &LMod,
+    ) {
+        let (b, d) = (p.b, p.d);
+        let ly = d.div_ceil(8);
+        let vlen = round_idx + 1 + b - var_off;
+        let mut vbuf = [0u8; 16 + 8 * MAXL + 16];
+        for k in 0..vlen {
+            if var_off + k < round_idx {
+                vbuf[k] = qconst(var_off + k);
+            }
+        }
+        let v = &mut vbuf[..vlen];
+        let ridx = round_idx - var_off;
+        let n_blocks = d.div_ceil(BLOCK);
+        let mut s = [0u8; 8 * MAXL + 32];
+        let (mut abuf, mut bbuf) = ([0u64; MAXL], [0u64; MAXL]);
+        let (mut y, mut r) = ([0u64; MAXL + 1], [0u64; MAXL]);
+        self.num_limbs(&x[..p.u], &mut abuf[..l]);
+        self.num_limbs(&x[p.u..], &mut bbuf[..l]);
+        let (mut a, mut bb) = (&mut abuf[..l], &mut bbuf[..l]);
+        let (full_b, part_b) = (b / 8, b % 8);
+        let full_d = d / 8;
+        for k in 0..10 {
+            let i = if enc { k } else { 9 - k };
+            {
+                let src: &[u64] = if enc { bb } else { a };
+                v[ridx] = i as u8;
+                let num = &mut v[ridx + 1..];
+                for q in 0..full_b {
+                    num[b - 8 * (q + 1)..b - 8 * q].copy_from_slice(&src[q].to_be_bytes());
+                }
+                for q in 0..part_b {
+                    num[part_b - 1 - q] = (src[full_b] >> (8 * q)) as u8;
+                }
+            }
+            let mut rr = *xs;
+            for chunk in v.chunks_exact(BLOCK) {
+                for j in 0..BLOCK {
+                    rr[j] ^= chunk[j];
+                }
+                self.aes.encrypt(&mut rr);
+            }
+            s[..BLOCK].copy_from_slice(&rr);
+            let j0 = u32::from_be_bytes(rr[12..16].try_into().unwrap());
+            for j in 1..n_blocks {
+                let mut blk = rr;
+                blk[12..16].copy_from_slice(&(j0 ^ j as u32).to_be_bytes());
+                self.aes.encrypt(&mut blk);
+                s[j * BLOCK..(j + 1) * BLOCK].copy_from_slice(&blk);
+            }
+            for q in 0..full_d {
+                y[q] = u64::from_be_bytes(s[d - 8 * (q + 1)..d - 8 * q].try_into().unwrap());
+            }
+            if d & 4 != 0 {
+                y[full_d] = u32::from_be_bytes(s[..4].try_into().unwrap()) as u64;
+            }
+            let m = if i & 1 == 0 { mu } else { mv };
+            m.rem(&y[..ly], &mut r[..l]);
+            if enc {
+                limb_addmod(a, &r[..l], &m.m[..l]);
+            } else {
+                limb_submod(bb, &r[..l], &m.m[..l]);
+            }
+            std::mem::swap(&mut a, &mut bb);
+        }
+        let (lo, hi) = out.split_at_mut(p.u);
+        self.str_limbs(a, lo);
+        self.str_limbs(bb, hi);
+    }
+
+    fn num_limbs(&self, x: &[u16], res: &mut [u64]) {
+        let r = self.radix as u64;
+        res.fill(0);
+        for chunk in x.chunks(self.group_len) {
+            let (mut acc, mut pw) = (0u64, 1u64);
+            for &dgt in chunk {
+                acc = acc * r + dgt as u64;
+                pw *= r;
+            }
+            let mut cy = acc;
+            for limb in res.iter_mut() {
+                let pr = *limb as u128 * pw as u128 + cy as u128;
+                *limb = pr as u64;
+                cy = (pr >> 64) as u64;
+            }
+        }
+    }
+
+    /// STR into out; destroys v.
+    fn str_limbs(&self, v: &mut [u64], out: &mut [u16]) {
+        let mut i = out.len();
+        let mut top = v.len();
+        while i > 0 {
+            while top > 0 && v[top - 1] == 0 {
+                top -= 1;
+            }
+            let mut r = 0u64;
+            for k in (0..top).rev() {
+                let (q, rr) = divrem_128_64(r, v[k], self.group_pow);
+                v[k] = q;
+                r = rr;
+            }
+            self.str_group(r, out, &mut i);
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -566,14 +826,14 @@ mod tests {
             (K256, T1, 10, "0123456789", "1001623463"),
             (K256, T2, 36, "0123456789abcdefghi", "xs8a0azh2avyalyzuwd"),
         ];
-        for force in [false, true] {
+        for force in [0u8, 1, 2] {
             for (i, (k, tw, radix, pt, ct)) in vs.iter().enumerate() {
                 let mut c = Ff1::new(&hex(k), *radix).unwrap();
-                c.force_bignum = force;
+                c.force_path = force;
                 let got = c.encrypt(&hex(tw), &parse(pt)).unwrap();
-                assert_eq!(fmt(&got), *ct, "sample {} encrypt (bignum={force})", i + 1);
+                assert_eq!(fmt(&got), *ct, "sample {} encrypt (path={force})", i + 1);
                 let back = c.decrypt(&hex(tw), &parse(ct)).unwrap();
-                assert_eq!(fmt(&back), *pt, "sample {} decrypt (bignum={force})", i + 1);
+                assert_eq!(fmt(&back), *pt, "sample {} decrypt (path={force})", i + 1);
             }
         }
     }
@@ -592,7 +852,7 @@ mod tests {
             let radix = radices[iter % radices.len()];
             let key: Vec<u8> = (0..[16, 24, 32][iter % 3]).map(|_| rnd() as u8).collect();
             let tw: Vec<u8> = (0..rnd() % 40).map(|_| rnd() as u8).collect();
-            let n = 2 + (rnd() % if iter % 2 == 1 { 40 } else { 150 }) as usize;
+            let n = 2 + (rnd() % if iter % 7 == 0 { 600 } else if iter % 2 == 1 { 40 } else { 150 }) as usize;
             let mut c = Ff1::new(&key, radix).unwrap();
             if c.check_length(n).is_err() {
                 continue;
@@ -600,9 +860,12 @@ mod tests {
             let x: Vec<u16> = (0..n).map(|_| (rnd() % radix as u64) as u16).collect();
             let ct = c.encrypt(&tw, &x).unwrap();
             assert_eq!(c.decrypt(&tw, &ct).unwrap(), x);
-            let mut s = Ff1::new(&key, radix).unwrap();
-            s.force_bignum = true;
-            assert_eq!(s.encrypt(&tw, &x).unwrap(), ct, "fast/bignum mismatch radix={radix} n={n}");
+            for fp in [1u8, 2] {
+                let mut s = Ff1::new(&key, radix).unwrap();
+                s.force_path = fp;
+                assert_eq!(s.encrypt(&tw, &x).unwrap(), ct, "path {fp} mismatch radix={radix} n={n}");
+                assert_eq!(s.decrypt(&tw, &ct).unwrap(), x, "path {fp} decrypt radix={radix} n={n}");
+            }
         }
     }
 
