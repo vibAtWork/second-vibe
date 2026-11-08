@@ -29,7 +29,8 @@ public final class PlanParser {
     static ColumnRule suggested(Column c) {
         PiiHint h = c.pii();
         if (!h.flagged()) return ColumnRule.KEEP;
-        boolean qi = h.level() == PiiHint.Level.QUASI;
+        // Unique record identifiers are pseudonymised, never used as quasi-identifiers (they would force k = 1).
+        boolean qi = h.level() == PiiHint.Level.QUASI && !"record identifier".equals(h.category());
         return new ColumnRule(Action.parse(h.suggestion()), defaultParam(c, Action.parse(h.suggestion())), qi, "", "");
     }
 

@@ -130,6 +130,7 @@
       <span th:if="${k.classesBelow() > 0}" th:text="${k.classesBelow()} + ' group(s) with ' + ${k.rowsBelow()} + ' row(s) below k=' + ${k.threshold()}">below</span>
       <span th:if="${k.rowsSuppressed() > 0}" th:text="' · ' + ${k.rowsSuppressed()} + ' row(s) dropped'">dropped</span>
       <span th:if="${k.ok()}"> · meets target</span>
+      <span th:if="${outRows == 0}"> · no rows left: every group is smaller than k</span>
       <span th:unless="${k.ok()}"> · below target: generalise more, suppress rare values or drop small groups</span>
     </div>
     <div th:unless="${k.enabled()}" class="muted small">Tick <b>QI</b> on columns that could identify people in combination (age, sex, postcode, dates, rare diagnoses…) to see the k-anonymity of the output.</div>
