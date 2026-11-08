@@ -96,10 +96,11 @@ func main() {
 		back, _ := c.Decrypt(tweak, ct)
 		ok = fmt.Sprint(back) == fmt.Sprint(pt)
 		ctStr = digits(ct)
-		x := pt
-		enc = func() { x, _ = c.Encrypt(tweak, x) }
-		y := ct
-		dec = func() { y, _ = c.Decrypt(tweak, y) }
+		// Allocation-free API, chained through two buffers.
+		x, x2 := append([]uint16(nil), pt...), make([]uint16, n)
+		enc = func() { _ = c.EncryptTo(tweak, x, x2); x, x2 = x2, x }
+		y, y2 := append([]uint16(nil), ct...), make([]uint16, n)
+		dec = func() { _ = c.DecryptTo(tweak, y, y2); y, y2 = y2, y }
 	case "capitalone":
 		c, err := capff1.NewCipher(radix, tlen, key, tweak)
 		if err != nil {

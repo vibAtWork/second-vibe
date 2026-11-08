@@ -2,6 +2,7 @@ package ff1
 
 import (
 	"encoding/hex"
+	"math/big"
 	"math/rand"
 	"strings"
 	"testing"
@@ -67,10 +68,10 @@ func TestNISTVectors(t *testing.T) {
 	}
 }
 
-func TestRoundTripRandom(t *testing.T) {
+func TestRoundTripAndFastVsBig(t *testing.T) {
 	rng := rand.New(rand.NewSource(1))
 	radices := []int{2, 3, 10, 16, 26, 36, 62, 255, 256, 1000, 65535, 65536}
-	for iter := 0; iter < 400; iter++ {
+	for iter := 0; iter < 2000; iter++ {
 		radix := radices[iter%len(radices)]
 		key := make([]byte, []int{16, 24, 32}[iter%3])
 		rng.Read(key)
@@ -78,25 +79,49 @@ func TestRoundTripRandom(t *testing.T) {
 		rng.Read(tw)
 		c, _ := New(key, radix)
 		n := 2 + rng.Intn(150)
-		x := make([]uint16, n)
-		for i := range x {
-			x[i] = uint16(rng.Intn(radix))
+		if iter%2 == 1 {
+			n = 2 + rng.Intn(40)
 		}
 		if c.checkLength(n) != nil {
 			continue
+		}
+		x := make([]uint16, n)
+		for i := range x {
+			x[i] = uint16(rng.Intn(radix))
 		}
 		ct, err := c.Encrypt(tw, x)
 		if err != nil {
 			t.Fatal(err)
 		}
-		pt, err := c.Decrypt(tw, ct)
-		if err != nil {
-			t.Fatal(err)
-		}
+		pt, _ := c.Decrypt(tw, ct)
+		s, _ := New(key, radix)
+		s.forceBig = true
+		ct2, _ := s.Encrypt(tw, x)
 		for i := range x {
 			if pt[i] != x[i] {
 				t.Fatalf("round trip mismatch radix=%d n=%d", radix, n)
 			}
+			if ct2[i] != ct[i] {
+				t.Fatalf("fast/big mismatch radix=%d n=%d", radix, n)
+			}
+		}
+	}
+}
+
+func TestRecip(t *testing.T) {
+	rng := rand.New(rand.NewSource(2))
+	for k := 0; k < 20000; k++ {
+		nbits := 2 + rng.Intn(95)
+		m := new(big.Int).Rand(rng, new(big.Int).Lsh(big.NewInt(1), uint(nbits)))
+		m.SetBit(m, 1, 1)
+		y := new(big.Int).Rand(rng, new(big.Int).Lsh(big.NewInt(1), 128))
+		mu := u128{new(big.Int).Rsh(m, 64).Uint64(), m.Uint64()}
+		yu := u128{new(big.Int).Rsh(y, 64).Uint64(), y.Uint64()}
+		r := newRecip(mu)
+		got := r.rem(yu)
+		want := new(big.Int).Mod(y, m)
+		if got.hi != new(big.Int).Rsh(want, 64).Uint64() || got.lo != want.Uint64() {
+			t.Fatalf("rem mismatch m=%v y=%v", m, y)
 		}
 	}
 }
@@ -105,19 +130,13 @@ func TestCalcB(t *testing.T) {
 	// Compare against the definition ceil(bitlen(radix^v - 1) / 8).
 	for _, r := range []int{2, 3, 7, 8, 10, 16, 36, 64, 255, 256, 1000, 65536} {
 		for v := 1; v < 80; v++ {
-			want := (bitlenPowMinus1(r, v) + 7) / 8
+			p := new(big.Int).Exp(big.NewInt(int64(r)), big.NewInt(int64(v)), nil)
+			want := (p.Sub(p, big.NewInt(1)).BitLen() + 7) / 8
 			if got := calcB(r, v); got != want {
 				t.Fatalf("calcB(%d,%d)=%d want %d", r, v, got, want)
 			}
 		}
 	}
-}
-
-func bitlenPowMinus1(r, v int) int {
-	c, _ := New(make([]byte, 16), r)
-	pp := c.num(append([]uint16{1}, make([]uint16, v)...)) // radix^v
-	pp.Sub(pp, c.num([]uint16{1}))
-	return pp.BitLen()
 }
 
 func TestValidation(t *testing.T) {
