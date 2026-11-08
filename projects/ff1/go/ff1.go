@@ -13,7 +13,9 @@
 //     single varying Q block is one 128-bit XOR, S = R (d <= 16), and the
 //     modular reduction is a hardware 128/64 divide (bits.Rem64) or a
 //     Möller–Granlund 3-by-2 reciprocal division for moduli >= 2^64.
-//     Larger domains use math/big.
+//     4b. Limb path up to 2^4096: fixed-width little-endian uint64 limb arrays,
+//     Knuth algorithm D for y mod radix^m, no allocation per call. math/big is
+//     only the fallback beyond that (and the test oracle).
 //  5. Digit extraction divides by the radix with a precomputed reciprocal.
 package ff1
 
@@ -129,11 +131,151 @@ func (r *recip) rem(y u128) u128 {
 	return u128{rr.hi >> s, rr.lo>>s | rr.hi<<(64-s)}
 }
 
+const maxLimbs = 64
+
+// lmod is a modulus for the limb path.
+type lmod struct {
+	n  int
+	s  uint
+	m  [maxLimbs]uint64 // zero-padded to L limbs
+	dn [maxLimbs]uint64 // m << s (n limbs)
+}
+
+func newLmod(m *big.Int) *lmod {
+	lm := &lmod{}
+	words := m.Bits() // little-endian big.Word (64-bit on amd64/arm64)
+	for i, w := range words {
+		lm.m[i] = uint64(w)
+	}
+	lm.n = len(words)
+	lm.s = uint(bits.LeadingZeros64(lm.m[lm.n-1]))
+	for i := lm.n - 1; i >= 0; i-- {
+		lm.dn[i] = lm.m[i] << lm.s
+		if lm.s != 0 && i > 0 {
+			lm.dn[i] |= lm.m[i-1] >> (64 - lm.s)
+		}
+	}
+	return lm
+}
+
+// rem sets r (L limbs) = y mod m using Knuth algorithm D (remainder only).
+func (lm *lmod) rem(y, r []uint64) {
+	n, s, ly := lm.n, lm.s, len(y)
+	for i := range r {
+		r[i] = 0
+	}
+	if ly < n {
+		copy(r, y)
+		return
+	}
+	var un [maxLimbs + 3]uint64
+	if s != 0 {
+		un[ly] = y[ly-1] >> (64 - s)
+		for i := ly - 1; i > 0; i-- {
+			un[i] = y[i]<<s | y[i-1]>>(64-s)
+		}
+		un[0] = y[0] << s
+	} else {
+		copy(un[:], y)
+	}
+	dn := &lm.dn
+	dtop := dn[n-1]
+	var dsec uint64
+	if n >= 2 {
+		dsec = dn[n-2]
+	}
+	for j := ly - n; j >= 0; j-- {
+		var qhat, rhat uint64
+		rhatOver := false
+		if un[j+n] < dtop {
+			qhat, rhat = bits.Div64(un[j+n], un[j+n-1], dtop)
+		} else {
+			qhat = ^uint64(0)
+			var c uint64
+			rhat, c = bits.Add64(un[j+n-1], dtop, 0)
+			rhatOver = c != 0
+		}
+		var u2 uint64
+		if j+n >= 2 {
+			u2 = un[j+n-2]
+		}
+		for !rhatOver {
+			ph, pl := bits.Mul64(qhat, dsec)
+			if ph < rhat || (ph == rhat && pl <= u2) {
+				break
+			}
+			qhat--
+			var c uint64
+			rhat, c = bits.Add64(rhat, dtop, 0)
+			rhatOver = c != 0
+		}
+		var borrow, carry uint64
+		for i := 0; i < n; i++ {
+			ph, pl := bits.Mul64(qhat, dn[i])
+			pl, c := bits.Add64(pl, carry, 0)
+			carry = ph + c
+			un[i+j], borrow = bits.Sub64(un[i+j], pl, borrow)
+		}
+		var b2 uint64
+		un[j+n], b2 = bits.Sub64(un[j+n], carry, borrow)
+		if b2 != 0 { // qhat one too large: add back
+			var c uint64
+			for i := 0; i < n; i++ {
+				un[i+j], c = bits.Add64(un[i+j], dn[i], c)
+			}
+			un[j+n] += c
+		}
+	}
+	for i := 0; i < n; i++ {
+		if s != 0 {
+			r[i] = un[i]>>s | un[i+1]<<(64-s)
+		} else {
+			r[i] = un[i]
+		}
+	}
+}
+
+func limbAddMod(a, r, m []uint64) {
+	var c uint64
+	for i := range a {
+		a[i], c = bits.Add64(a[i], r[i], c)
+	}
+	if c == 0 {
+		for i := len(a) - 1; i >= 0; i-- {
+			if a[i] != m[i] {
+				if a[i] < m[i] {
+					return
+				}
+				break
+			}
+		}
+	}
+	var bw uint64
+	for i := range a {
+		a[i], bw = bits.Sub64(a[i], m[i], bw)
+	}
+}
+
+func limbSubMod(a, r, m []uint64) {
+	var bw uint64
+	for i := range a {
+		a[i], bw = bits.Sub64(a[i], r[i], bw)
+	}
+	if bw != 0 {
+		var c uint64
+		for i := range a {
+			a[i], c = bits.Add64(a[i], m[i], c)
+		}
+	}
+}
+
 type params struct {
 	n, t, u, v, b, d int
 	encP             [blockSize]byte
 	fast             bool
 	ru, rv           recip
+	limbs            int
+	lmU, lmV         *lmod
 	bigU, bigV       *big.Int
 }
 
@@ -145,11 +287,14 @@ type Cipher struct {
 	groupLen   int
 	groupPow   uint64
 	magic      uint64
-	forceBig   bool
+	forcePath  int // testing: 0 auto, 1 force limb path, 2 force math/big path
 	p          *params
 	a, b, y, t *big.Int
 	vbuf, sbuf []byte
 	x, blk     [blockSize]byte // scratch: kept on the struct so they don't escape per call
+	lv         [16 + 8*maxLimbs + 16]byte
+	ls         [8*maxLimbs + 32]byte
+	lr         [blockSize]byte
 }
 
 // New creates an FF1 cipher for the given AES key and radix.
@@ -214,7 +359,7 @@ func (c *Cipher) makeParams(n, t int) *params {
 	p.v = n - p.u
 	r := uint64(c.radix)
 	// radix^v < 2^96 ?
-	pv, ok := u128{0, 1}, !c.forceBig
+	pv, ok := u128{0, 1}, c.forcePath == 0
 	for k := 0; k < p.v && ok; k++ {
 		hi1, lo := bits.Mul64(pv.lo, r)
 		hi := pv.hi*r + hi1
@@ -244,6 +389,10 @@ func (c *Cipher) makeParams(n, t int) *params {
 		}
 		m1 := new(big.Int).Sub(p.bigV, big.NewInt(1))
 		p.b = (m1.BitLen() + 7) / 8
+		if L := (p.bigV.BitLen() + 63) / 64; c.forcePath != 2 && L <= maxLimbs && bits.UintSize == 64 {
+			p.limbs = L
+			p.lmU, p.lmV = newLmod(p.bigU), newLmod(p.bigV)
+		}
 	}
 	p.d = (p.b + 7) &^ 3
 	var P [blockSize]byte
@@ -303,8 +452,120 @@ func (c *Cipher) crypt(T []byte, x, out []uint16, enc bool) error {
 		c.cryptFast(p, xc, x, out, enc)
 		return nil
 	}
+	if p.limbs != 0 {
+		c.cryptLimb(p, T, X, off, roundIdx, x, out, enc)
+		return nil
+	}
 	c.cryptBig(p, T, X, off, roundIdx, x, out, enc)
 	return nil
+}
+
+func (c *Cipher) cryptLimb(p *params, T []byte, X *[blockSize]byte, off, roundIdx int, x, out []uint16, enc bool) {
+	b, d, L := p.b, p.d, p.limbs
+	ly := (d + 7) / 8
+	vlen := roundIdx + 1 + b - off
+	V := c.lv[:vlen]
+	for k := range V {
+		V[k] = 0
+		if j := off + k; j < roundIdx && j < len(T) {
+			V[k] = T[j]
+		}
+	}
+	ridx := roundIdx - off
+	nBlocks := (d + blockSize - 1) / blockSize
+	S := c.ls[:nBlocks*blockSize]
+	var abuf, bbuf, rbuf [maxLimbs]uint64
+	var ybuf [maxLimbs + 1]uint64
+	A, B, r, y := abuf[:L], bbuf[:L], rbuf[:L], ybuf[:ly]
+	c.numLimbs(x[:p.u], A)
+	c.numLimbs(x[p.u:], B)
+	fullB, partB, fullD := b/8, b%8, d/8
+	num := V[ridx+1:]
+	R := &c.lr
+	for k := 0; k < 10; k++ {
+		i, src := k, B
+		if !enc {
+			i, src = 9-k, A
+		}
+		V[ridx] = byte(i)
+		for q := 0; q < fullB; q++ {
+			binary.BigEndian.PutUint64(num[b-8*(q+1):], src[q])
+		}
+		for q := 0; q < partB; q++ {
+			num[partB-1-q] = byte(src[fullB] >> (8 * q))
+		}
+		*R = *X
+		for o := 0; o < vlen; o += blockSize {
+			for j := 0; j < blockSize; j++ {
+				R[j] ^= V[o+j]
+			}
+			c.block.Encrypt(R[:], R[:])
+		}
+		copy(S, R[:])
+		j0 := binary.BigEndian.Uint32(R[12:])
+		for j := 1; j < nBlocks; j++ {
+			blk := S[j*blockSize : (j+1)*blockSize]
+			copy(blk, R[:12])
+			binary.BigEndian.PutUint32(blk[12:], j0^uint32(j))
+			c.block.Encrypt(blk, blk)
+		}
+		for q := 0; q < fullD; q++ {
+			y[q] = binary.BigEndian.Uint64(S[d-8*(q+1):])
+		}
+		if d&4 != 0 {
+			y[fullD] = uint64(binary.BigEndian.Uint32(S[:4]))
+		}
+		m := p.lmU
+		if i&1 == 1 {
+			m = p.lmV
+		}
+		m.rem(y, r)
+		if enc {
+			limbAddMod(A, r, m.m[:L])
+		} else {
+			limbSubMod(B, r, m.m[:L])
+		}
+		A, B = B, A
+	}
+	c.strLimbs(A, out[:p.u])
+	c.strLimbs(B, out[p.u:])
+}
+
+func (c *Cipher) numLimbs(x []uint16, res []uint64) {
+	for i := range res {
+		res[i] = 0
+	}
+	r := uint64(c.radix)
+	for i := 0; i < len(x); {
+		end := min(i+c.groupLen, len(x))
+		acc, pw := uint64(0), uint64(1)
+		for ; i < end; i++ {
+			acc = acc*r + uint64(x[i])
+			pw *= r
+		}
+		cy := acc
+		for k := range res {
+			hi, lo := bits.Mul64(res[k], pw)
+			var cc uint64
+			res[k], cc = bits.Add64(lo, cy, 0)
+			cy = hi + cc
+		}
+	}
+}
+
+// strLimbs writes STR^m_radix(v) into out; destroys v.
+func (c *Cipher) strLimbs(v []uint64, out []uint16) {
+	i, top := len(out), len(v)
+	for i > 0 {
+		for top > 0 && v[top-1] == 0 {
+			top--
+		}
+		var r uint64
+		for k := top - 1; k >= 0; k-- {
+			v[k], r = bits.Div64(r, v[k], c.groupPow)
+		}
+		i = c.strGroup(r, out, i)
+	}
 }
 
 func shl128(x uint64, s uint) u128 { // x << s, s < 128

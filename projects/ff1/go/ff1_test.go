@@ -82,6 +82,9 @@ func TestRoundTripAndFastVsBig(t *testing.T) {
 		if iter%2 == 1 {
 			n = 2 + rng.Intn(40)
 		}
+		if iter%7 == 0 {
+			n = 2 + rng.Intn(600)
+		}
 		if c.checkLength(n) != nil {
 			continue
 		}
@@ -94,15 +97,20 @@ func TestRoundTripAndFastVsBig(t *testing.T) {
 			t.Fatal(err)
 		}
 		pt, _ := c.Decrypt(tw, ct)
-		s, _ := New(key, radix)
-		s.forceBig = true
-		ct2, _ := s.Encrypt(tw, x)
 		for i := range x {
 			if pt[i] != x[i] {
 				t.Fatalf("round trip mismatch radix=%d n=%d", radix, n)
 			}
-			if ct2[i] != ct[i] {
-				t.Fatalf("fast/big mismatch radix=%d n=%d", radix, n)
+		}
+		for fp := 1; fp <= 2; fp++ {
+			s, _ := New(key, radix)
+			s.forcePath = fp
+			ct2, _ := s.Encrypt(tw, x)
+			pt2, _ := s.Decrypt(tw, ct)
+			for i := range x {
+				if ct2[i] != ct[i] || pt2[i] != x[i] {
+					t.Fatalf("path %d mismatch radix=%d n=%d", fp, radix, n)
+				}
 			}
 		}
 	}
