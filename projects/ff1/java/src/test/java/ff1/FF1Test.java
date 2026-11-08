@@ -29,42 +29,79 @@ class FF1Test {
         return HexFormat.of().parseHex(s);
     }
 
+    static final Object[][] NIST = {
+        {K128, "", 10, "0123456789", "2433477484"},
+        {K128, T1, 10, "0123456789", "6124200773"},
+        {K128, T2, 36, "0123456789abcdefghi", "a9tv40mll9kdu509eum"},
+        {K192, "", 10, "0123456789", "2830668132"},
+        {K192, T1, 10, "0123456789", "2496655549"},
+        {K192, T2, 36, "0123456789abcdefghi", "xbj3kv35jrawxv32ysr"},
+        {K256, "", 10, "0123456789", "6657667009"},
+        {K256, T1, 10, "0123456789", "1001623463"},
+        {K256, T2, 36, "0123456789abcdefghi", "xs8a0azh2avyalyzuwd"},
+    };
+
+    @Test
+    void intrinsicAesIsAvailableInTests() {
+        // surefire runs with --add-opens (see pom.xml) so both backends are exercised
+        assertTrue(FF1.intrinsicAesAvailable());
+    }
+
     @Test
     void nistVectors() {
-        Object[][] v = {
-            {K128, "", 10, "0123456789", "2433477484"},
-            {K128, T1, 10, "0123456789", "6124200773"},
-            {K128, T2, 36, "0123456789abcdefghi", "a9tv40mll9kdu509eum"},
-            {K192, "", 10, "0123456789", "2830668132"},
-            {K192, T1, 10, "0123456789", "2496655549"},
-            {K192, T2, 36, "0123456789abcdefghi", "xbj3kv35jrawxv32ysr"},
-            {K256, "", 10, "0123456789", "6657667009"},
-            {K256, T1, 10, "0123456789", "1001623463"},
-            {K256, T2, 36, "0123456789abcdefghi", "xs8a0azh2avyalyzuwd"},
-        };
-        for (int i = 0; i < v.length; i++) {
-            FF1 c = new FF1(hex((String) v[i][0]), (Integer) v[i][2]);
-            byte[] tw = hex((String) v[i][1]);
-            assertEquals(v[i][4], fmt(c.encrypt(tw, parse((String) v[i][3]))), "sample " + (i + 1));
-            assertEquals(v[i][3], fmt(c.decrypt(tw, parse((String) v[i][4]))), "sample " + (i + 1));
+        for (boolean intrinsic : new boolean[] {false, true}) {
+            for (boolean big : new boolean[] {false, true}) {
+                for (int i = 0; i < NIST.length; i++) {
+                    Object[] v = NIST[i];
+                    FF1 c = new FF1(hex((String) v[0]), (Integer) v[2], intrinsic);
+                    c.forceBig = big;
+                    byte[] tw = hex((String) v[1]);
+                    String label = "sample " + (i + 1) + " intrinsic=" + intrinsic + " big=" + big;
+                    assertEquals(v[4], fmt(c.encrypt(tw, parse((String) v[3]))), label);
+                    assertEquals(v[3], fmt(c.decrypt(tw, parse((String) v[4]))), label);
+                }
+            }
         }
     }
 
     @Test
-    void roundTripRandom() {
+    void roundTripAndFastVsBig() {
         Random rng = new Random(1);
         int[] radices = {2, 3, 10, 16, 26, 36, 62, 255, 256, 1000, 65535, 65536};
-        for (int it = 0; it < 400; it++) {
+        for (int it = 0; it < 2000; it++) {
             int radix = radices[it % radices.length];
             byte[] key = new byte[new int[] {16, 24, 32}[it % 3]];
             rng.nextBytes(key);
             byte[] tw = new byte[rng.nextInt(40)];
             rng.nextBytes(tw);
-            int n = 2 + rng.nextInt(150);
+            int n = 2 + rng.nextInt(it % 2 == 1 ? 40 : 150);
             if (!FF1.lengthOk(radix, n)) continue;
             int[] x = rng.ints(n, 0, radix).toArray();
             FF1 c = new FF1(key, radix);
-            assertArrayEquals(x, c.decrypt(tw, c.encrypt(tw, x)));
+            int[] ct = c.encrypt(tw, x);
+            assertArrayEquals(x, c.decrypt(tw, ct));
+            FF1 s = new FF1(key, radix, false);
+            s.forceBig = true;
+            assertArrayEquals(ct, s.encrypt(tw, x), "fast/big mismatch radix=" + radix + " n=" + n);
+        }
+    }
+
+    @Test
+    void reciprocalReduction() throws Exception {
+        Random rng = new Random(2);
+        FF1 c = new FF1(new byte[16], 10);
+        var rem = FF1.class.getDeclaredMethod("rem", long.class, long.class, FF1.Recip.class);
+        rem.setAccessible(true);
+        var r2 = FF1.class.getDeclaredField("r2");
+        r2.setAccessible(true);
+        for (int k = 0; k < 20000; k++) {
+            BigInteger m = new BigInteger(2 + rng.nextInt(95), rng).setBit(1);
+            BigInteger y = new BigInteger(128, rng);
+            long lo = (long) rem.invoke(c, y.shiftRight(64).longValue(), y.longValue(), new FF1.Recip(m));
+            long hi = r2.getLong(c);
+            BigInteger got = new BigInteger(Long.toUnsignedString(hi)).shiftLeft(64)
+                .add(new BigInteger(Long.toUnsignedString(lo)));
+            assertEquals(y.mod(m), got, "m=" + m + " y=" + y);
         }
     }
 

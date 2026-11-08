@@ -42,7 +42,7 @@ public final class Bench {
 
     public static void main(String[] args) {
         if (args.length != 5) {
-            System.err.println("usage: Bench <ours|bc> radix n keybits tweaklen");
+            System.err.println("usage: Bench <ours|jce|bc> radix n keybits tweaklen");
             System.exit(2);
         }
         int radix = Integer.parseInt(args[1]);
@@ -60,16 +60,30 @@ public final class Bench {
         String ctStr;
         double e;
         double d;
-        if (args[0].equals("ours")) {
-            name = "java";
-            FF1 c = new FF1(key, radix);
+        if (args[0].equals("ours") || args[0].equals("jce")) {
+            boolean intrinsic = args[0].equals("ours");
+            if (intrinsic && !FF1.intrinsicAesAvailable()) {
+                throw new IllegalStateException("run with --add-opens java.base/com.sun.crypto.provider=ALL-UNNAMED");
+            }
+            name = intrinsic ? "java" : "java-jce";
+            FF1 c = new FF1(key, radix, intrinsic);
             int[] ct = c.encrypt(tweak, pt);
             if (!Arrays.equals(pt, c.decrypt(tweak, ct))) throw new AssertionError("round trip failed");
             ctStr = digits(ct);
-            int[][] x = {pt};
-            e = measure(() -> x[0] = c.encrypt(tweak, x[0]));
-            int[][] y = {ct};
-            d = measure(() -> y[0] = c.decrypt(tweak, y[0]));
+            int[][] x = {pt.clone(), new int[n]};
+            e = measure(() -> {
+                c.encrypt(tweak, x[0], x[1]);
+                int[] tmp = x[0];
+                x[0] = x[1];
+                x[1] = tmp;
+            });
+            int[][] y = {ct.clone(), new int[n]};
+            d = measure(() -> {
+                c.decrypt(tweak, y[0], y[1]);
+                int[] tmp = y[0];
+                y[0] = y[1];
+                y[1] = tmp;
+            });
             sink = x[0][0] + y[0][0];
         } else if (args[0].equals("bc")) {
             // BouncyCastle FPEFF1Engine with its default AES engine; digits as bytes (radix <= 256).
