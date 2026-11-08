@@ -66,9 +66,9 @@ int main(void)
     }
     static const unsigned radices[] = {2, 3, 10, 16, 26, 36, 62, 255, 256, 1000, 65535, 65536};
     int trips = 0;
-    for (int it = 0; it < 400; it++) {
+    for (int it = 0; it < 2000; it++) {
         unsigned radix = radices[it % 12];
-        size_t kl = (size_t[]){16, 24, 32}[it % 3], tl = rnd() % 40, n = 2 + rnd() % 150;
+        size_t kl = (size_t[]){16, 24, 32}[it % 3], tl = rnd() % 40, n = 2 + (it % 2 ? rnd() % 40 : rnd() % 150);
         uint8_t key[32], tw[40];
         uint16_t x[160], y[160], z[160];
         for (size_t i = 0; i < kl; i++) key[i] = (uint8_t)rnd();
@@ -82,6 +82,16 @@ int main(void)
             printf("round trip failed radix=%u n=%zu\n", radix, n);
             failures++;
         }
+        /* The 128-bit fast path and the BIGNUM path must agree exactly. */
+        ff1_ctx s;
+        uint16_t w[160];
+        ff1_init(&s, key, kl, radix);
+        s.force_bignum = 1;
+        if (ff1_encrypt(&s, tw, tl, x, w, n) || memcmp(w, y, n * 2)) {
+            printf("fast/bignum mismatch radix=%u n=%zu\n", radix, n);
+            failures++;
+        }
+        ff1_free(&s);
         trips++;
         ff1_free(&c);
     }
@@ -96,7 +106,7 @@ int main(void)
     if (ff1_encrypt(&c, NULL, 0, buf, buf, 7) != FF1_ERR_DIGIT) failures++;
     ff1_free(&c);
 
-    printf("%s: 9 NIST vectors, %d random round trips, validation checks; %d failures\n",
+    printf("%s: 9 NIST vectors, %d random round trips (each also checked fast path vs BIGNUM path), validation checks; %d failures\n",
            failures ? "FAIL" : "PASS", trips, failures);
     return failures != 0;
 }
