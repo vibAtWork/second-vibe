@@ -50,13 +50,13 @@ class FF1Test {
     @Test
     void nistVectors() {
         for (boolean intrinsic : new boolean[] {false, true}) {
-            for (boolean big : new boolean[] {false, true}) {
+            for (int path = 0; path <= 2; path++) {
                 for (int i = 0; i < NIST.length; i++) {
                     Object[] v = NIST[i];
                     FF1 c = new FF1(hex((String) v[0]), (Integer) v[2], intrinsic);
-                    c.forceBig = big;
+                    c.forcePath = path;
                     byte[] tw = hex((String) v[1]);
-                    String label = "sample " + (i + 1) + " intrinsic=" + intrinsic + " big=" + big;
+                    String label = "sample " + (i + 1) + " intrinsic=" + intrinsic + " path=" + path;
                     assertEquals(v[4], fmt(c.encrypt(tw, parse((String) v[3]))), label);
                     assertEquals(v[3], fmt(c.decrypt(tw, parse((String) v[4]))), label);
                 }
@@ -74,15 +74,18 @@ class FF1Test {
             rng.nextBytes(key);
             byte[] tw = new byte[rng.nextInt(40)];
             rng.nextBytes(tw);
-            int n = 2 + rng.nextInt(it % 2 == 1 ? 40 : 150);
+            int n = 2 + rng.nextInt(it % 7 == 0 ? 600 : it % 2 == 1 ? 40 : 150);
             if (!FF1.lengthOk(radix, n)) continue;
             int[] x = rng.ints(n, 0, radix).toArray();
             FF1 c = new FF1(key, radix);
             int[] ct = c.encrypt(tw, x);
             assertArrayEquals(x, c.decrypt(tw, ct));
-            FF1 s = new FF1(key, radix, false);
-            s.forceBig = true;
-            assertArrayEquals(ct, s.encrypt(tw, x), "fast/big mismatch radix=" + radix + " n=" + n);
+            for (int path = 1; path <= 2; path++) {
+                FF1 s = new FF1(key, radix, false);
+                s.forcePath = path;
+                assertArrayEquals(ct, s.encrypt(tw, x), "path " + path + " radix=" + radix + " n=" + n);
+                assertArrayEquals(x, s.decrypt(tw, ct), "path " + path + " decrypt radix=" + radix + " n=" + n);
+            }
         }
     }
 

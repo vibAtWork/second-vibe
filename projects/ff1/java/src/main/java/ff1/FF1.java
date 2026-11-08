@@ -24,8 +24,10 @@ import javax.crypto.spec.SecretKeySpec;
  *   <li>Feistel halves stay numbers across rounds (NUM/STR only at entry/exit).</li>
  *   <li>Fast path when radix^v &lt; 2^96: halves are pairs of {@code long}s, the
  *       varying Q block is a 128-bit XOR, S = R, and reduction uses Möller–Granlund
- *       reciprocal division ({@link Math#unsignedMultiplyHigh}). Larger domains use
- *       {@link BigInteger}.</li>
+ *       reciprocal division ({@link Math#unsignedMultiplyHigh}).</li>
+ *   <li>Limb path up to 2^4096: fixed-width little-endian {@code long[]} limbs,
+ *       Knuth algorithm D for y mod radix^m, scratch arrays reused across calls.
+ *       {@link BigInteger} is only the fallback beyond that (and the test oracle).</li>
  *   <li>Digit extraction divides by the radix with a precomputed reciprocal.</li>
  * </ol>
  *
@@ -170,6 +172,39 @@ public final class FF1 {
         Recip rv;
         BigInteger bigU;
         BigInteger bigV;
+        int limbs;
+        LMod lmU;
+        LMod lmV;
+    }
+
+    private static final int MAXL = 64;
+
+    /** A modulus for the limb path: little-endian limbs and its normalized form. */
+    static final class LMod {
+        final int n;
+        final int s;
+        final long[] m; // zero-padded to L limbs
+        final long[] dn; // m << s
+        final long vtop; // reciprocal of dn[n-1]
+
+        LMod(BigInteger mod, int L) {
+            m = new long[L];
+            for (int i = 0; i < L; i++) {
+                m[i] = mod.shiftRight(64 * i).longValue();
+            }
+            int nn = L;
+            while (nn > 1 && m[nn - 1] == 0) {
+                nn--;
+            }
+            n = nn;
+            s = Long.numberOfLeadingZeros(m[n - 1]);
+            dn = new long[n];
+            for (int i = n - 1; i >= 0; i--) {
+                dn[i] = (m[i] << s) | (s != 0 && i > 0 ? m[i - 1] >>> (64 - s) : 0);
+            }
+            BigInteger d = new BigInteger(Long.toUnsignedString(dn[n - 1]));
+            vtop = BigInteger.ONE.shiftLeft(128).subtract(BigInteger.ONE).divide(d).subtract(TWO64).longValue();
+        }
     }
 
     private final Aes aes;
@@ -179,7 +214,7 @@ public final class FF1 {
     private final long groupPow;
     private final Recip groupRecip;
     private final long magic;
-    boolean forceBig; // testing only
+    int forcePath; // testing only: 0 auto, 1 force limb path, 2 force BigInteger path
     private Params params;
     private final byte[] blk = new byte[BLOCK];
     // second result of the 2-word helpers below
@@ -273,10 +308,23 @@ public final class FF1 {
         BigInteger mv = p.v != p.u ? mu.multiply(bigRadix) : mu;
         p.b = (mv.subtract(BigInteger.ONE).bitLength() + 7) / 8;
         p.d = (p.b + 7) & ~3;
-        p.fast = !forceBig && mv.bitLength() <= 96;
+        p.fast = forcePath == 0 && mv.bitLength() <= 96;
+        int L = (mv.bitLength() + 63) / 64;
         if (p.fast) {
             p.ru = new Recip(mu);
             p.rv = new Recip(mv);
+        } else if (forcePath != 2 && L <= MAXL) {
+            p.limbs = L;
+            p.lmU = new LMod(mu, L);
+            p.lmV = new LMod(mv, L);
+            int vlen = 16 + 1 + p.b + 16;
+            lv = new byte[vlen];
+            ls = new byte[(p.d + BLOCK - 1) / BLOCK * BLOCK];
+            la = new long[L];
+            lb = new long[L];
+            lr = new long[L];
+            ly = new long[(p.d + 7) / 8];
+            lun = new long[ly.length + 3];
         } else {
             p.bigU = mu;
             p.bigV = mv;
@@ -344,8 +392,277 @@ public final class FF1 {
                 }
             }
             cryptFast(p, (long) LONG_BE.get(X, 0), (long) LONG_BE.get(X, 8), x, out, enc);
+        } else if (p.limbs != 0) {
+            cryptLimb(p, T, X.clone(), off, roundIdx, x, out, enc);
         } else {
             cryptBig(p, T, X.clone(), off, roundIdx, x, out, enc);
+        }
+    }
+
+    // ---- limb path ----
+    private byte[] lv;
+    private byte[] ls;
+    private long[] la;
+    private long[] lb;
+    private long[] lr;
+    private long[] ly;
+    private long[] lun;
+
+    /** r (L limbs) = y mod M, Knuth algorithm D (remainder only). */
+    private void limbRem(long[] y, LMod M, long[] r) {
+        final int n = M.n;
+        final int s = M.s;
+        final int nly = y.length;
+        Arrays.fill(r, 0);
+        if (nly < n) {
+            System.arraycopy(y, 0, r, 0, nly);
+            return;
+        }
+        long[] un = lun;
+        un[nly] = s != 0 ? y[nly - 1] >>> (64 - s) : 0;
+        for (int i = nly - 1; i > 0; i--) {
+            un[i] = (y[i] << s) | (s != 0 ? y[i - 1] >>> (64 - s) : 0);
+        }
+        un[0] = y[0] << s;
+        final long[] dn = M.dn;
+        final long dtop = dn[n - 1];
+        final long dsec = n >= 2 ? dn[n - 2] : 0;
+        for (int j = nly - n; j >= 0; j--) {
+            long qhat;
+            long rhat;
+            boolean rhatOver;
+            if (Long.compareUnsigned(un[j + n], dtop) < 0) {
+                rhat = divrem2by1(un[j + n], un[j + n - 1], dtop, M.vtop);
+                qhat = r2;
+                rhatOver = false;
+            } else {
+                qhat = -1L;
+                rhat = un[j + n - 1] + dtop;
+                rhatOver = Long.compareUnsigned(rhat, dtop) < 0;
+            }
+            long u2 = j + n >= 2 ? un[j + n - 2] : 0;
+            while (!rhatOver) {
+                long ph = Math.unsignedMultiplyHigh(qhat, dsec);
+                long pl = qhat * dsec;
+                if (Long.compareUnsigned(ph, rhat) < 0 || (ph == rhat && Long.compareUnsigned(pl, u2) <= 0)) {
+                    break;
+                }
+                qhat--;
+                long nr = rhat + dtop;
+                rhatOver = Long.compareUnsigned(nr, rhat) < 0;
+                rhat = nr;
+            }
+            long borrow = 0;
+            long carry = 0;
+            for (int i = 0; i < n; i++) {
+                long ph = Math.unsignedMultiplyHigh(qhat, dn[i]);
+                long pl = qhat * dn[i];
+                long pl2 = pl + carry;
+                carry = ph + (Long.compareUnsigned(pl2, pl) < 0 ? 1 : 0);
+                long u = un[i + j];
+                long t = u - pl2;
+                long b1 = Long.compareUnsigned(u, pl2) < 0 ? 1 : 0;
+                long t2 = t - borrow;
+                long b2 = Long.compareUnsigned(t, borrow) < 0 ? 1 : 0;
+                un[i + j] = t2;
+                borrow = b1 | b2;
+            }
+            long u = un[j + n];
+            long t = u - carry;
+            long b1 = Long.compareUnsigned(u, carry) < 0 ? 1 : 0;
+            long b2 = Long.compareUnsigned(t, borrow) < 0 ? 1 : 0;
+            un[j + n] = t - borrow;
+            if ((b1 | b2) != 0) {
+                long cy = 0;
+                for (int i = 0; i < n; i++) {
+                    long a = un[i + j];
+                    long sm = a + dn[i];
+                    long c1 = Long.compareUnsigned(sm, a) < 0 ? 1 : 0;
+                    long sm2 = sm + cy;
+                    long c2 = Long.compareUnsigned(sm2, sm) < 0 ? 1 : 0;
+                    un[i + j] = sm2;
+                    cy = c1 | c2;
+                }
+                un[j + n] += cy;
+            }
+        }
+        for (int i = 0; i < n; i++) {
+            r[i] = s != 0 ? (un[i] >>> s) | (un[i + 1] << (64 - s)) : un[i];
+        }
+    }
+
+    private static void limbAddMod(long[] a, long[] r, long[] m) {
+        long cy = 0;
+        for (int i = 0; i < a.length; i++) {
+            long x = a[i];
+            long sm = x + r[i];
+            long c1 = Long.compareUnsigned(sm, x) < 0 ? 1 : 0;
+            long sm2 = sm + cy;
+            long c2 = Long.compareUnsigned(sm2, sm) < 0 ? 1 : 0;
+            a[i] = sm2;
+            cy = c1 | c2;
+        }
+        boolean ge = cy != 0;
+        if (!ge) {
+            ge = true;
+            for (int i = a.length - 1; i >= 0; i--) {
+                if (a[i] != m[i]) {
+                    ge = Long.compareUnsigned(a[i], m[i]) > 0;
+                    break;
+                }
+            }
+        }
+        if (ge) {
+            long bw = 0;
+            for (int i = 0; i < a.length; i++) {
+                long x = a[i];
+                long t = x - m[i];
+                long b1 = Long.compareUnsigned(x, m[i]) < 0 ? 1 : 0;
+                long b2 = Long.compareUnsigned(t, bw) < 0 ? 1 : 0;
+                a[i] = t - bw;
+                bw = b1 | b2;
+            }
+        }
+    }
+
+    private static void limbSubMod(long[] a, long[] r, long[] m) {
+        long bw = 0;
+        for (int i = 0; i < a.length; i++) {
+            long x = a[i];
+            long t = x - r[i];
+            long b1 = Long.compareUnsigned(x, r[i]) < 0 ? 1 : 0;
+            long b2 = Long.compareUnsigned(t, bw) < 0 ? 1 : 0;
+            a[i] = t - bw;
+            bw = b1 | b2;
+        }
+        if (bw != 0) {
+            long cy = 0;
+            for (int i = 0; i < a.length; i++) {
+                long x = a[i];
+                long sm = x + m[i];
+                long c1 = Long.compareUnsigned(sm, x) < 0 ? 1 : 0;
+                long sm2 = sm + cy;
+                long c2 = Long.compareUnsigned(sm2, sm) < 0 ? 1 : 0;
+                a[i] = sm2;
+                cy = c1 | c2;
+            }
+        }
+    }
+
+    private void cryptLimb(Params p, byte[] T, byte[] X, int off, int roundIdx, int[] x, int[] out, boolean enc) {
+        final int b = p.b;
+        final int d = p.d;
+        final int t = T.length;
+        final int vlen = roundIdx + 1 + b - off;
+        final byte[] V = lv;
+        for (int k = 0; k < vlen; k++) {
+            int j = off + k;
+            V[k] = (j < roundIdx && j < t) ? T[j] : 0;
+        }
+        final int ridx = roundIdx - off;
+        final int noff = ridx + 1;
+        final int nBlocks = (d + BLOCK - 1) / BLOCK;
+        final byte[] S = ls;
+        final byte[] R = new byte[BLOCK];
+        long[] A = la;
+        long[] B = lb;
+        final long[] r = lr;
+        final long[] y = ly;
+        numLimbs(x, 0, p.u, A);
+        numLimbs(x, p.u, p.n, B);
+        final int fullB = b / 8;
+        final int partB = b % 8;
+        final int fullD = d / 8;
+        for (int k = 0; k < 10; k++) {
+            int i = enc ? k : 9 - k;
+            long[] src = enc ? B : A;
+            V[ridx] = (byte) i;
+            for (int q = 0; q < fullB; q++) {
+                LONG_BE.set(V, noff + b - 8 * (q + 1), src[q]);
+            }
+            for (int q = 0; q < partB; q++) {
+                V[noff + partB - 1 - q] = (byte) (src[fullB] >>> (8 * q));
+            }
+            System.arraycopy(X, 0, R, 0, BLOCK);
+            for (int o = 0; o < vlen; o += BLOCK) {
+                for (int j = 0; j < BLOCK; j++) {
+                    R[j] ^= V[o + j];
+                }
+                aes.encrypt(R, 0);
+            }
+            System.arraycopy(R, 0, S, 0, BLOCK);
+            int j0 = ((R[12] & 0xff) << 24) | ((R[13] & 0xff) << 16) | ((R[14] & 0xff) << 8) | (R[15] & 0xff);
+            for (int j = 1; j < nBlocks; j++) {
+                int so = j * BLOCK;
+                System.arraycopy(R, 0, S, so, 12);
+                int w = j0 ^ j;
+                S[so + 12] = (byte) (w >>> 24);
+                S[so + 13] = (byte) (w >>> 16);
+                S[so + 14] = (byte) (w >>> 8);
+                S[so + 15] = (byte) w;
+                aes.encrypt(S, so);
+            }
+            for (int q = 0; q < fullD; q++) {
+                y[q] = (long) LONG_BE.get(S, d - 8 * (q + 1));
+            }
+            if ((d & 4) != 0) {
+                y[fullD] = ((S[0] & 0xffL) << 24) | ((S[1] & 0xffL) << 16) | ((S[2] & 0xffL) << 8) | (S[3] & 0xffL);
+            }
+            LMod m = (i & 1) == 0 ? p.lmU : p.lmV;
+            limbRem(y, m, r);
+            if (enc) {
+                limbAddMod(A, r, m.m);
+            } else {
+                limbSubMod(B, r, m.m);
+            }
+            long[] tmp = A;
+            A = B;
+            B = tmp;
+        }
+        strLimbs(A, out, 0, p.u);
+        strLimbs(B, out, p.u, p.n);
+    }
+
+    private void numLimbs(int[] x, int from, int to, long[] res) {
+        Arrays.fill(res, 0);
+        for (int i = from; i < to; ) {
+            int end = Math.min(i + groupLen, to);
+            long acc = 0;
+            long pw = 1;
+            for (; i < end; i++) {
+                acc = acc * radix + x[i];
+                pw *= radix;
+            }
+            long cy = acc;
+            for (int k = 0; k < res.length; k++) {
+                long lo = res[k] * pw;
+                long hi = Math.unsignedMultiplyHigh(res[k], pw);
+                long lo2 = lo + cy;
+                cy = hi + (Long.compareUnsigned(lo2, lo) < 0 ? 1 : 0);
+                res[k] = lo2;
+            }
+        }
+    }
+
+    /** STR into out[from..to); destroys v. */
+    private void strLimbs(long[] v, int[] out, int from, int to) {
+        int i = to;
+        int top = v.length;
+        Recip g = groupRecip;
+        int s = g.s;
+        while (i > from) {
+            while (top > 0 && v[top - 1] == 0) {
+                top--;
+            }
+            // short division by groupPow, normalized by s (remainder stays shifted)
+            long rem = 0;
+            for (int k = top - 1; k >= 0; k--) {
+                long u1 = rem | (s != 0 ? v[k] >>> (64 - s) : 0);
+                long u0 = v[k] << s;
+                rem = divrem2by1(u1, u0, g.d0, g.v);
+                v[k] = r2;
+            }
+            i = strGroup(rem >>> s, out, from, i);
         }
     }
 
