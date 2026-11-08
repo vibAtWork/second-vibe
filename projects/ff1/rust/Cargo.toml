@@ -1,0 +1,19 @@
+[package]
+name = "ff1"
+version = "0.1.0"
+edition = "2021"
+description = "NIST SP 800-38G FF1 format-preserving encryption (AES), modeled on BouncyCastle"
+license = "MIT"
+
+[dependencies]
+aes = "0.9"
+num-bigint = "0.5"
+num-traits = "0.2"
+num-integer = "0.1"
+# Baseline used only by the ff1bench binary.
+fpe = "0.7"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

@@ -1,0 +1,8 @@
+go/ff1bench
+rust/target/
+java/target/
+elixir/_build/
+elixir/deps/
+openssl/*.o
+openssl/ff1_test
+openssl/ff1bench
