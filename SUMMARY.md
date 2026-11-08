@@ -18,6 +18,7 @@ to share with another institution or with an AI assistant.
 
 ```bash
 cd projects/tablescrub && mvn package && java -jar target/tablescrub-0.1.0.jar   # then open http://127.0.0.1:7070, upload samples/cohort.csv
+# or: cd projects/tablescrub && docker build -t tablescrub . && docker run --rm -p 127.0.0.1:7070:7070 tablescrub
 ```
 
 ## Review first

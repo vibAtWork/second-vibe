@@ -25,6 +25,21 @@ java -jar target/tablescrub-0.1.0.jar
 # open http://127.0.0.1:7070 and upload samples/cohort.csv (400 synthetic patients)
 ```
 
+### With Docker
+
+```bash
+cd projects/tablescrub
+docker build -t tablescrub .          # compiles and runs the tests inside the build
+docker run --rm -p 127.0.0.1:7070:7070 tablescrub
+# open http://127.0.0.1:7070
+```
+
+Or run `docker compose up --build`. The compose file adds a read-only root filesystem, drops all
+capabilities and sets a 2 GB memory limit. The image is a multi-stage build (Maven → Temurin 21 JRE),
+runs as a non-root user, has a health check, and includes `samples/` under `/app/samples`. Configure it
+with the environment variables below, e.g. `-e TABLESCRUB_MAX_UPLOAD_MB=500`. Keep the port bound to
+`127.0.0.1` unless an authenticating reverse proxy sits in front of it.
+
 Development: `mvn compile exec:java`. Set `TABLESCRUB_DEV=true` to reload templates without restarting.
 
 | env var | default | meaning |

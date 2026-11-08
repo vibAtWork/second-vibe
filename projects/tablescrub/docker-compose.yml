@@ -1,0 +1,18 @@
+services:
+  tablescrub:
+    build: .
+    image: tablescrub:latest
+    container_name: tablescrub
+    ports:
+      - "127.0.0.1:7070:7070"   # localhost only: the app has no login (see README, Security)
+    environment:
+      TABLESCRUB_MAX_UPLOAD_MB: "100"
+      TABLESCRUB_TTL_MINUTES: "60"
+    read_only: true            # nothing is written to disk; uploads live in memory
+    tmpfs:
+      - /tmp                    # Jetty multipart scratch space
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    mem_limit: 2g
+    restart: unless-stopped
