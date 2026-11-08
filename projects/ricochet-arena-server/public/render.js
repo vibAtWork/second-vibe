@@ -197,7 +197,7 @@ export function createRenderer(canvas) {
     ctx.fillStyle = color; ctx.fillText(text, VIEW_W / 2, y, max);
   }
 
-  // v: { maze, poses, bullets, lasers, crates, spinOf, colorOf, weaponOf, players, mine, rtt, frozen, banner, cheat, spectating }
+  // v: { maze, poses, bullets, lasers, crates, spinOf, colorOf, weaponOf, players, mine, rtt, frozen, banner, spectating }
   function draw(v) {
     ctx.setTransform(canvas.width / VIEW_W, 0, 0, canvas.height / VIEW_H, 0, 0);
     ctx.fillStyle = '#f4f1ea'; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
@@ -224,11 +224,6 @@ export function createRenderer(canvas) {
 
     if (v.frozen > 0) centerText('Get ready…', mazeH / 2, '700 28px system-ui', '#0007');
     if (v.banner && now < v.banner.until) centerText(v.banner.text, mazeH / 2 - 40, '700 30px system-ui', v.banner.color, '#fff');
-    if (v.cheat) {
-      ctx.fillStyle = '#000b'; ctx.fillRect(0, mazeH / 2 - 50, VIEW_W, 90);
-      centerText('Cheating detected - game stopped', mazeH / 2 - 15, '700 22px system-ui', '#ffcf33');
-      centerText(v.cheat, mazeH / 2 + 12, '14px system-ui', '#fff');
-    }
     if (v.spectating) centerText('Spectating - press Join to play', mazeH - 12, '600 16px system-ui', '#0009');
   }
 

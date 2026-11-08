@@ -26,3 +26,4 @@
   - a P2P host is called stale only if snapshots keep coming without audit logs (a frozen tab is lag, not cheating)
   - the flaky network test was fixed to send in step with server ticks (it was timer jitter, not a game bug)
 - **Reports go to the players** (the owner runs the server unattended). Flags are broadcast with every snapshot and shown on the scoreboard and in a reports panel. A strict majority of the other players can vote out a flagged player; non-flagged players can't be voted on, which prevents ganging up.
+- **Anti-cheat UI stays out of the playfield** (owner's request): no canvas banners. Flags, removals and P2P cheat detection appear only in the panel below the game and as the ⚠ on the scoreboard. Messages drop off after a minute.

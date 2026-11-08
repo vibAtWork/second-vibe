@@ -73,6 +73,7 @@ export function startClient(createTransport) {
   const offsets = [];
   const auditor = new Auditor(reason => {
     cheat = reason;
+    notice(`Cheating detected, game stopped: ${reason}`);
     statusEl.textContent = 'stopped: host cheating detected';
     net.stop();
   });
@@ -119,7 +120,7 @@ export function startClient(createTransport) {
       const i = seats.findIndex(s => s.id === m.id);
       if (i >= 0) seats.splice(i, 1);
       updateButtons();
-      banner = { text: `You were removed: ${m.reason}`, color: '#c33', until: performance.now() + 15000 };
+      notice(`You were removed: ${m.reason}`);
       statusEl.textContent = 'removed by anti-cheat';
     },
     banned(m) { seats.length = 0; updateButtons(); statusEl.textContent = `can't join: ${m.reason}`; },
@@ -178,31 +179,40 @@ export function startClient(createTransport) {
       case 'shardwall': if (Math.random() < 0.5) audio.shard(); break;
       case 'win': banner = { text: `${nameOf(ev.id)} wins the round!`, color: colorOf(ev.id), until: performance.now() + 2000 }; break;
       case 'draw': banner = { text: 'Draw!', color: '#555', until: performance.now() + 2000 }; break;
-      case 'cheater': banner = { text: `${ev.name} was removed (${ev.reason})`, color: '#c33', until: performance.now() + 5000 }; break;
-      case 'flag': {
-        const me = seats.some(s => s.id === ev.id);
-        banner = { text: me ? `Anti-cheat flagged you: ${ev.reason}` : `⚠ Anti-cheat flagged ${ev.name}: ${ev.reason}`, color: '#c77700', until: performance.now() + 6000 };
-        break;
-      }
+      case 'cheater': notice(`${ev.name} was removed (${ev.reason})`); break;
     }
   }
 
   // ---- anti-cheat reports panel: every player sees who is suspected and why,
   // and can vote to remove a flagged player (a majority of the others removes them)
+  // (Anti-cheat messages only ever appear here, below the game, never over the playfield.)
   const voted = new Set();
+  const notices = []; // recent anti-cheat messages: { text, at }
+  function notice(text) {
+    notices.push({ text, at: performance.now() });
+    if (notices.length > 5) notices.shift();
+    shownFlags = '';
+    if (latest) showReports(latest);
+  }
+  setInterval(() => { // let old messages drop off the panel after a minute
+    const n = notices.length;
+    while (notices.length && performance.now() - notices[0].at > 60000 && !cheat) notices.shift();
+    if (notices.length !== n && latest) { shownFlags = ''; showReports(latest); }
+  }, 5000);
   let shownFlags = '';
   function showReports(s) {
-    const key = JSON.stringify([s.flags, seats.map(x => x.id), [...voted]]);
+    const key = JSON.stringify([s.flags, seats.map(x => x.id), [...voted], notices.length]);
     if (key === shownFlags) return;
     shownFlags = key;
     const box = $('reports');
     if (!box) return;
-    box.hidden = !s.flags.length;
+    box.hidden = !s.flags.length && !notices.length;
     box.replaceChildren();
-    if (!s.flags.length) return;
+    if (box.hidden) return;
     const title = document.createElement('strong');
-    title.textContent = 'Anti-cheat reports';
+    title.textContent = 'Anti-cheat';
     box.append(title);
+    for (const n of notices) { const row = document.createElement('div'); row.textContent = n.text; box.append(row); }
     const playing = seats.some(x => x.id != null);
     for (const f of s.flags) {
       const row = document.createElement('div');
@@ -279,7 +289,7 @@ export function startClient(createTransport) {
     draw({
       maze, poses, bullets: st?.bullets || [], lasers: st?.lasers || [], crates: st?.crates || [],
       spinOf: id => st?.spinByOwner.get(id) || 0, colorOf, weaponOf: id => latest?.tankById.get(id)?.weapon || 0,
-      players: latest?.players || [], flagged: new Set((latest?.flags || []).map(f => f.id)), mine, rtt, frozen: latest?.frozen || 0, banner, cheat, spectating: !seats.length,
+      players: latest?.players || [], flagged: new Set((latest?.flags || []).map(f => f.id)), mine, rtt, frozen: latest?.frozen || 0, banner, spectating: !seats.length,
     });
   }
 

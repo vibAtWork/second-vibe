@@ -108,13 +108,15 @@ watches every seat on the server (and on a P2P host) without affecting the game:
 
 **Everything is reported to the players, so the server can run unattended:**
 
-* **Flags** (suspicions that aren't strong enough for an automatic kick) are announced to
-  everyone in the room with a banner. The suspect gets a ⚠ on the scoreboard, and a panel
-  under the game lists every flag with its reason. The flagged player sees it too.
+* **Flags** (suspicions that aren't strong enough for an automatic kick) are shown to everyone
+  in the room: the suspect gets a ⚠ on the scoreboard, and a panel **below the game** lists
+  every flag with its reason. The flagged player sees it too. Anti-cheat never draws over the
+  playfield.
 * **Players decide:** anyone else playing can press **Vote to remove**, and a strict majority of
   the other players removes the flagged player. Votes are only possible against players the
   detector flagged, so a group can't vote out someone innocent.
-* **Kicks:** the kicked player sees why, and everyone else sees "<name> was removed (reason)".
+* **Kicks:** the kicked player sees why, and everyone else sees "<name> was removed (reason)"
+  in the same panel.
 * The admin page (`/admin/reports`) is optional; it shows the same information plus evidence numbers.
  Address bans
 are **off** by default, because friends and family often share one IP and a bot is simply
