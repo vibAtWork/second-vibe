@@ -49,3 +49,10 @@ in every implementation.
 Digits travel as native arrays/lists (`uint16`/`int`/list-of-integers), except
 for the Go capitalone baseline, which only has a string API. Its numbers
 therefore include string ↔ big.Int conversion, as they would in real use.
+
+Our C, Rust, Go and Java benches call the allocation-free entry points
+(`ff1_encrypt(in, out)`, `encrypt_into`, `EncryptTo`, `encrypt(tweak, in, out)`)
+and ping-pong between two buffers. Elixir returns a new list, which is
+inherent to the language. Instances are reused across calls, so the
+per-(n, tweak-length) parameter cache is warm. That matches the typical use of
+encrypting a column of same-length values.

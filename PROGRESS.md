@@ -10,3 +10,5 @@
 | 2026-11-07 | Elixir FF1 (:crypto + integers) + ExUnit + bench | done, tests pass | projects/ff1/elixir |
 | 2026-11-07 | Benchmark driver with cross-implementation ciphertext check | done | projects/ff1/bench |
 | 2026-11-07 | Full benchmark run (3 rounds, 18.7 min), README with final tables, SUMMARY.md | done | projects/ff1/results, projects/ff1/README.md |
+| 2026-11-08 | Toolchains: Go 1.27.3, Rust 1.99.1, JDK 25.0.4 (OTP/Elixir/OpenSSL upgrade blocked, see BLOCKED.md) | partial | — |
+| 2026-11-08 | v2 optimizations: u128 fast path, limb path (Knuth D), param + prefix caching, reciprocal division, native builds, Java AES intrinsic backend, Elixir NIF-count/alloc reductions | done, all tests pass (3-way path cross-checks) | projects/ff1/* |
