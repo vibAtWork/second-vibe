@@ -1,0 +1,11 @@
+patient_id;Full Name;CPR;Email;Phone;Date of birth;Sex;Postcode;City;Diagnosis;Systolic BP;Weight kg;Notes
+P-1001;Anna Jensen;010185-1234;anna.jensen@example.dk;+45 20 11 22 33;1985-01-01;F;2100;København;Hypertension;142;68,5;Patient reports headaches in the morning, referred by Dr. Holm
+P-1002;Lars Nielsen;150372-2345;lars.n@example.dk;+45 21 22 33 44;1972-03-15;M;2200;København;Diabetes type 2;151;92,1;Follow-up in three months regarding medication adjustment
+P-1003;Mette Hansen;220990-3456;mette.h@example.com;+45 22 33 44 55;1990-09-22;F;8000;Aarhus;Asthma;118;61,0;Uses inhaler twice daily, no hospital admissions this year
+P-1004;Søren Pedersen;030466-4567;soren@example.org;+45 23 44 55 66;1966-04-03;M;8000;Aarhus;Hypertension;160;88,4;Smoker for twenty years, advised to attend cessation programme
+P-1005;Ida Larsen;111178-5678;ida.larsen@example.dk;+45 24 55 66 77;1978-11-11;F;5000;Odense;Migraine;124;59,8;Episodes are triggered by lack of sleep according to the patient
+P-1006;Mads Christensen;070795-6789;mads.c@example.dk;+45 25 66 77 88;1995-07-07;M;2100;København;Asthma;121;77,3;Seasonal symptoms in spring, allergy test scheduled next month
+P-1007;Sofie Andersen;290883-7890;sofie.a@example.com;+45 26 77 88 99;1983-08-29;F;9000;Aalborg;Diabetes type 2;139;83,0;Diet counselling completed, blood sugar improving steadily now
+P-1008;Jonas Sørensen;120261-8901;jonas.s@example.dk;+45 27 88 99 00;1961-02-12;M;2200;København;Hypertension;155;95,6;Lives alone, daughter helps with medication on most weekdays
+P-1009;Emma Rasmussen;050500-9012;emma.r@example.dk;+45 28 99 00 11;2000-05-05;F;5000;Odense;Migraine;117;55,2;Student, symptoms worse during exam periods according to her
+P-1010;Oliver Jørgensen;181069-0123;oliver.j@example.org;+45 29 00 11 22;1969-10-18;M;9000;Aalborg;Asthma;133;81,7;Former competitive swimmer, symptoms started after moving house

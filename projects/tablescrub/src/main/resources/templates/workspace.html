@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<body>
+<div id="workspace" th:fragment="workspace">
+  <section class="card">
+    <div class="row between">
+      <div>
+        <h2 class="nomargin" th:text="${table.name()}">table</h2>
+        <div class="muted small">
+          <span th:text="${filename}">file.csv</span> ·
+          <span th:text="${table.sourceFormat()}">csv</span> ·
+          <b th:text="${#numbers.formatInteger(table.rowCount(), 1, 'COMMA')}">0</b> rows ·
+          <b th:text="${table.columnCount()}">0</b> columns ·
+          <span th:classappend="${flagged > 0} ? 'warn-text'" th:text="${flagged} + ' column(s) flagged'">0 flagged</span>
+        </div>
+      </div>
+      <div class="row gap">
+        <button type="button" class="ghost" th:hx-get="|/d/${id}/t/${t}?mode=suggest|"
+                hx-target="#workspace" hx-swap="outerHTML" hx-confirm="Reset every column to the suggested treatment?">Apply suggestions</button>
+        <button type="button" class="ghost" th:hx-get="|/d/${id}/t/${t}?mode=keep|"
+                hx-target="#workspace" hx-swap="outerHTML" hx-confirm="Reset every column to Keep?">Keep all</button>
+        <button type="button" class="danger" th:hx-post="|/d/${id}/discard|"
+                hx-confirm="Remove this upload from server memory now?">Discard upload</button>
+      </div>
+    </div>
+    <nav class="tabs" th:if="${tables.size() > 1}">
+      <a th:each="tb, st : ${tables}" href="#" th:hx-get="|/d/${id}/t/${st.index}|"
+         hx-target="#workspace" hx-swap="outerHTML"
+         th:classappend="${st.index == t} ? 'active'" th:text="${tb.name()}">sheet</a>
+    </nav>
+    <div class="alert warn" th:each="w : ${table.warnings()}" th:text="${w}">warning</div>
+    <div class="alert info" th:if="${flagged > 0}">
+      Suggested treatments have been pre-selected for flagged columns. These are heuristics: check every column, including ones that were not flagged.
+    </div>
+  </section>
+
+  <form id="plan" method="post" th:action="|/d/${id}/t/${t}/export|"
+        th:hx-post="|/d/${id}/t/${t}/preview|" hx-trigger="change, keyup delay:700ms"
+        hx-target="#preview" hx-swap="outerHTML" hx-sync="this:replace">
+
+    <section class="card">
+      <h3>Columns</h3>
+      <div class="scroll">
+        <table class="cols">
+          <thead><tr>
+            <th>Column</th><th>Profile</th><th>Flag</th><th>Treatment</th><th>Parameter</th>
+            <th title="Quasi-identifier: include in the k-anonymity check">QI</th><th>Export name</th><th>Description (data dictionary)</th>
+          </tr></thead>
+          <tbody>
+          <tr th:each="cv : ${cols}" th:with="c=${cv.c()}, i=${cv.c().index()}" th:classappend="'lvl-' + ${cv.level()}">
+            <td>
+              <div class="colname" th:text="${c.name()}">name</div>
+              <span class="type" th:text="${c.type().frictionless()}">string</span>
+              <span class="samples muted" th:text="${cv.samples()}" th:title="${cv.samples()}">a · b</span>
+            </td>
+            <td class="small nowrap">
+              <div th:text="${cv.fill()} + ' filled'">100%</div>
+              <div class="muted" th:text="${c.distinctCapped()} ? '100k+ distinct' : (${c.distinct()} + ' distinct')">3 distinct</div>
+              <div class="muted" th:if="${c.min() != null}" th:text="${c.min()} + ' … ' + ${c.max()}">1 … 9</div>
+            </td>
+            <td>
+              <span th:if="${c.pii().flagged()}" class="pill" th:classappend="${cv.level()}"
+                    th:text="${c.pii().category()}" th:title="${c.pii().reason()}">email</span>
+              <span th:if="${c.unique() and !c.pii().flagged()}" class="pill quiet" title="Every value is unique">unique</span>
+            </td>
+            <td>
+              <select th:name="'a' + ${i}" class="action" th:data-type="${c.type().name()}">
+                <option th:each="a : ${actions}" th:value="${a.name()}" th:text="${a.label}" th:title="${a.help}"
+                        th:selected="${a == cv.r().action()}">Keep</option>
+              </select>
+            </td>
+            <td><input type="text" class="param" th:name="'p' + ${i}" th:value="${cv.r().param()}"
+                       th:placeholder="${cv.paramHint()}" th:disabled="${!cv.needsParam()}" size="12"></td>
+            <td class="center"><input type="checkbox" th:name="'q' + ${i}" th:checked="${cv.r().quasiIdentifier()}"></td>
+            <td><input type="text" th:name="'n' + ${i}" th:value="${cv.r().rename()}" th:placeholder="${c.name()}" size="14"></td>
+            <td><input type="text" th:name="'d' + ${i}" th:value="${cv.r().description()}" placeholder="What does this column mean? Unit?" size="28"></td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card grid2">
+      <div>
+        <h3>Dataset documentation</h3>
+        <label>Title <input type="text" name="title" th:placeholder="${table.name()}"></label>
+        <label>Description <textarea name="description" rows="3" placeholder="Purpose, population, time period, collection method…"></textarea></label>
+        <label>Licence / terms of use
+          <input type="text" name="license" list="licenses" placeholder="e.g. CC-BY-4.0, or 'Restricted, DUA required'"></label>
+        <datalist id="licenses">
+          <option value="CC-BY-4.0"><option value="CC0-1.0"><option value="CC-BY-NC-4.0">
+          <option value="Restricted: data use agreement required"><option value="Internal use only">
+        </datalist>
+      </div>
+      <div>
+        <h3>Privacy settings</h3>
+        <label>Linkage secret for <em>Keyed hash</em> (optional)
+          <input type="password" name="secret" autocomplete="off" placeholder="blank = random key for this upload">
+        </label>
+        <p class="muted small">Use the same long secret on several files (or later deliveries) to get identical hashes so records can be joined. Never share the secret with recipients; without it the hashes cannot be reversed or re-computed.</p>
+        <div class="row gap">
+          <label class="inline">k-anonymity target <input type="number" name="k" min="1" max="1000" th:value="${plan.kThreshold()}"></label>
+          <label class="inline"><input type="checkbox" name="suppress"> drop rows in groups smaller than k</label>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Export</h3>
+      <div class="exports">
+        <button th:each="f : ${formats}" type="submit" name="format" th:value="${f.id}" th:title="${f.help}">
+          <b th:text="${f.label}">CSV</b><span th:text="${f.help}" class="small">help</span>
+        </button>
+      </div>
+    </section>
+  </form>
+
+  <div th:replace="~{workspace :: preview}"></div>
+</div>
+
+<div id="preview" th:fragment="preview" class="card">
+  <div class="row between">
+    <h3 class="nomargin">Preview <span class="muted small" th:text="'first ' + ${previewRows} + ' of ' + ${#numbers.formatInteger(outRows, 1, 'COMMA')} + ' output rows'">first 50</span></h3>
+  </div>
+  <div th:with="k=${preview.kStats()}">
+    <div th:if="${k.enabled()}" class="kbox" th:classappend="${k.ok()} ? 'ok' : 'bad'">
+      <b th:text="'k = ' + ${k.k()}">k = 3</b>
+      <span th:text="'over ' + ${#strings.listJoin(k.quasiIdentifiers(), ', ')}">over age, zip</span> ·
+      <span th:text="${k.classes()} + ' groups'">10 groups</span> ·
+      <span th:if="${k.classesBelow() > 0}" th:text="${k.classesBelow()} + ' group(s) with ' + ${k.rowsBelow()} + ' row(s) below k=' + ${k.threshold()}">below</span>
+      <span th:if="${k.rowsSuppressed() > 0}" th:text="' · ' + ${k.rowsSuppressed()} + ' row(s) dropped'">dropped</span>
+      <span th:if="${k.ok()}"> · meets target</span>
+      <span th:unless="${k.ok()}"> · below target: generalise more, suppress rare values or drop small groups</span>
+    </div>
+    <div th:unless="${k.enabled()}" class="muted small">Tick <b>QI</b> on columns that could identify people in combination (age, sex, postcode, dates, rare diagnoses…) to see the k-anonymity of the output.</div>
+  </div>
+  <details th:if="${!preview.log().isEmpty()}" class="log">
+    <summary th:text="'Redaction log (' + ${preview.log().size()} + ' entries, included in every export)'">log</summary>
+    <ul><li th:each="l : ${preview.log()}" th:text="${l}">entry</li></ul>
+  </details>
+  <div class="scroll">
+    <table class="data">
+      <thead><tr>
+        <th th:each="oc : ${preview.columns()}" th:title="${oc.originalName()}">
+          <span th:text="${oc.name()}">col</span><span class="type" th:text="${oc.type().frictionless()}">string</span>
+        </th>
+      </tr></thead>
+      <tbody>
+      <tr th:each="r : ${preview.rows()}">
+        <td th:each="v, st : ${r}" th:text="${v}" th:classappend="${v == null} ? 'null' : (${preview.columns().get(st.index).type().numeric()} ? 'num')"></td>
+      </tr>
+      </tbody>
+    </table>
+    <p th:if="${preview.columns().isEmpty()}" class="muted">All columns are dropped.</p>
+  </div>
+</div>
+</body>
+</html>

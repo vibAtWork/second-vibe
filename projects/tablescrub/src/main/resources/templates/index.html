@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tablescrub · de-identify tables for sharing</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/webjars/htmx.org/2.0.8/dist/htmx.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <a href="/" class="brand">tablescrub</a>
+  <span class="tag">Normalise · redact · document · share</span>
+  <span class="spacer"></span>
+  <span class="muted small">Data stays in this server's memory only, and is discarded after <span th:text="${ttl}">60</span> idle minutes.</span>
+</header>
+
+<main>
+  <section class="card upload">
+    <form method="post" action="/upload" enctype="multipart/form-data"
+          hx-post="/upload" hx-encoding="multipart/form-data" hx-target="#workspace" hx-swap="outerHTML"
+          hx-trigger="change from:#file, submit" hx-indicator="#up-ind">
+      <label class="drop" for="file">
+        <strong>Drop a file here or click to choose</strong>
+        <span class="muted" th:text="${supported}">.csv .xlsx</span>
+        <span class="muted small">Max <span th:text="${maxMb}">100</span> MB. Excel workbooks: every sheet becomes a table.</span>
+        <input id="file" type="file" name="file" th:accept="${accept}" required>
+      </label>
+      <noscript><button type="submit">Upload</button></noscript>
+      <span id="up-ind" class="htmx-indicator">Reading and profiling…</span>
+    </form>
+  </section>
+
+  <th:block th:fragment="alert">
+    <div id="workspace" th:if="${error != null or notice != null}">
+      <div class="alert error" th:if="${error != null}" th:text="${error}">error</div>
+      <div class="alert ok" th:if="${notice != null}" th:text="${notice}">notice</div>
+    </div>
+  </th:block>
+  <th:block th:if="${u != null}"><div th:replace="~{workspace :: workspace}"></div></th:block>
+  <div id="workspace" th:if="${u == null and error == null and notice == null}">
+    <section class="card intro">
+      <h2>How it works</h2>
+      <ol>
+        <li><b>Upload</b> CSV/TSV (any delimiter or encoding), Excel (.xlsx/.xls, all sheets) or JSON / JSON Lines.</li>
+        <li>It is converted to one <b>common table model</b>: clean headers, ISO dates, typed columns, profiled values.</li>
+        <li>Columns that look like <b>personal data</b> are flagged and given a suggested treatment: drop, mask,
+          keyed hash, pseudonym, generalise, suppress rare values, round.</li>
+        <li>Mark <b>quasi-identifiers</b> (age, postcode, sex…) to check <b>k-anonymity</b> live, and optionally drop rows in groups that are too small.</li>
+        <li><b>Export</b> to CSV, TSV, Excel, JSON, JSON Lines, SQL, HTML, a Frictionless <b>Data Package</b> for another institution,
+          or <b>Markdown for AI</b>: context, data dictionary and data in one paste.</li>
+      </ol>
+      <p class="muted small">The detector is a helper, not a guarantee. Review every column before you share. Removing names does not make data anonymous on its own.</p>
+    </section>
+  </div>
+</main>
+</body>
+</html>

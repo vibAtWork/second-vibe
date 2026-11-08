@@ -1,0 +1,401 @@
+record_id,first_name,last_name,cpr,email,date_of_birth,sex,zip,city,admission_date,diagnosis,systolic_bp,bmi,smoker,hba1c_mmol_mol
+R100000,Anna,Andersen,201261-2280,anna.andersen0@example.org,1961-12-20,F,2300,København S,2023-04-15,Migraine,132,29.2,no,
+R100001,Maja,Jørgensen,190542-5740,maja.jorgensen1@example.org,1942-05-19,F,8000,Aarhus C,2024-07-12,Asthma,124,32.2,no,48
+R100002,Oliver,Hansen,260459-9801,oliver.hansen2@example.org,1959-04-26,M,5000,Odense C,2023-04-15,Hypertension,135,24.3,no,41
+R100003,Laura,Rasmussen,140351-9960,laura.rasmussen3@example.org,1951-03-14,F,9000,Aalborg,2023-03-22,Migraine,117,32.4,yes,34
+R100004,Sofie,Andersen,270247-8750,sofie.andersen4@example.org,1947-02-27,F,8000,Aarhus C,2023-04-14,Asthma,127,26.0,no,45
+R100005,Jonas,Andersen,280401-6631,jonas.andersen5@example.org,2001-04-28,M,2200,København N,2023-06-25,Migraine,121,24.6,no,46
+R100006,Lars,Pedersen,171142-8241,lars.pedersen6@example.org,1942-11-17,M,5000,Odense C,2024-02-15,Diabetes type 2,120,35.1,no,63
+R100007,Laura,Larsen,020997-4690,laura.larsen7@example.org,1997-09-02,F,2300,København S,2023-09-29,Hypertension,135,32.1,no,26
+R100008,Jonas,Hansen,170985-5051,jonas.hansen8@example.org,1985-09-17,M,2200,København N,2023-02-18,Hypertension,122,28.4,yes,40
+R100009,Noah,Jørgensen,281281-5411,noah.jorgensen9@example.org,1981-12-28,M,8200,Aarhus N,2024-07-20,Hypertension,132,25.2,no,37
+R100010,Emma,Larsen,100354-4640,emma.larsen10@example.org,1954-03-10,F,2100,København Ø,2023-09-27,Migraine,101,27.4,no,30
+R100011,Ida,Christensen,290654-5520,ida.christensen11@example.org,1954-06-29,F,6700,Esbjerg,2023-01-01,Sarcoidosis,120,27.7,no,45
+R100012,Anna,Pedersen,251190-9690,anna.pedersen12@example.org,1990-11-25,F,2200,København N,2023-03-29,COPD,106,31.5,no,22
+R100013,Laura,Rasmussen,241054-2710,laura.rasmussen13@example.org,1954-10-24,F,6700,Esbjerg,2024-03-09,Diabetes type 2,140,24.1,no,57
+R100014,Emil,Sørensen,091150-2531,emil.sorensen14@example.org,1950-11-09,M,8000,Aarhus C,2023-03-07,Asthma,110,32.0,yes,38
+R100015,Anna,Pedersen,170146-9270,anna.pedersen15@example.org,1946-01-17,F,2100,København Ø,2023-12-05,Hypertension,125,26.7,no,28
+R100016,Laura,Larsen,300157-0960,laura.larsen16@example.org,1957-01-30,F,2200,København N,2024-03-17,Asthma,117,23.0,yes,40
+R100017,Clara,Christensen,201049-2540,clara.christensen17@example.org,1949-10-20,F,8000,Aarhus C,2023-07-14,Migraine,110,28.3,no,37
+R100018,Anna,Rasmussen,280441-9920,anna.rasmussen18@example.org,1941-04-28,F,2200,København N,2023-08-31,Hypertension,162,23.2,yes,41
+R100019,Clara,Jensen,100175-2710,clara.jensen19@example.org,1975-01-10,F,7100,Vejle,2023-10-20,Asthma,115,20.9,no,33
+R100020,Jonas,Jensen,171291-7531,jonas.jensen20@example.org,1991-12-17,M,6700,Esbjerg,2023-03-04,Asthma,110,32.0,no,40
+R100021,Maja,Nielsen,020956-0700,maja.nielsen21@example.org,1956-09-02,F,2200,København N,2023-08-29,Asthma,140,32.8,no,30
+R100022,Oliver,Pedersen,310100-7331,oliver.pedersen22@example.org,2000-01-31,M,5000,Odense C,2023-09-02,Diabetes type 2,112,22.3,no,63
+R100023,Anna,Sørensen,230995-5760,anna.sorensen23@example.org,1995-09-23,F,2200,København N,2023-03-17,Migraine,124,30.1,no,46
+R100024,Mads,Sørensen,250988-7201,mads.sorensen24@example.org,1988-09-25,M,8200,Aarhus N,2024-06-25,Hypertension,118,24.5,yes,30
+R100025,Emma,Nielsen,080849-7600,emma.nielsen25@example.org,1949-08-08,F,6700,Esbjerg,2023-06-09,Diabetes type 2,120,29.7,no,54
+R100026,Lars,Nielsen,261196-4331,lars.nielsen26@example.org,1996-11-26,M,8200,Aarhus N,2023-02-15,Hypertension,113,25.9,no,40
+R100027,Emil,Larsen,270490-0091,emil.larsen27@example.org,1990-04-27,M,2200,København N,2023-03-19,Hypertension,113,24.9,no,39
+R100028,Lars,Christensen,051158-6981,lars.christensen28@example.org,1958-11-05,M,8000,Aarhus C,2023-04-16,Asthma,127,28.6,no,25
+R100029,Ida,Hansen,271276-0250,ida.hansen29@example.org,1976-12-27,F,2300,København S,2023-12-07,Asthma,129,19.4,yes,36
+R100030,Lars,Sørensen,151259-2041,lars.sorensen30@example.org,1959-12-15,M,7100,Vejle,2023-12-25,Diabetes type 2,142,30.5,no,47
+R100031,William,Andersen,240346-9901,william.andersen31@example.org,1946-03-24,M,8200,Aarhus N,2023-12-26,Migraine,94,33.6,no,40
+R100032,Julie,Andersen,070643-1110,julie.andersen32@example.org,1943-06-07,F,9000,Aalborg,2023-12-20,Asthma,119,16.4,no,44
+R100033,Lars,Larsen,250240-5321,lars.larsen33@example.org,1940-02-25,M,6700,Esbjerg,2023-07-21,Asthma,95,31.1,yes,31
+R100034,Emil,Andersen,301099-4181,emil.andersen34@example.org,1999-10-30,M,5000,Odense C,2024-02-17,Diabetes type 2,109,24.5,no,57
+R100035,Julie,Jørgensen,311266-4150,julie.jorgensen35@example.org,1966-12-31,F,6700,Esbjerg,2023-01-01,Diabetes type 2,119,31.1,no,54
+R100036,Maja,Sørensen,230355-6740,maja.sorensen36@example.org,1955-03-23,F,2200,København N,2023-10-18,Migraine,110,24.1,no,
+R100037,Jonas,Pedersen,210353-0251,jonas.pedersen37@example.org,1953-03-21,M,2100,København Ø,2023-09-08,COPD,107,21.8,no,30
+R100038,Lucas,Larsen,201161-1511,lucas.larsen38@example.org,1961-11-20,M,2100,København Ø,2023-04-20,Asthma,126,34.1,yes,30
+R100039,Mads,Sørensen,221199-5431,mads.sorensen39@example.org,1999-11-22,M,6700,Esbjerg,2023-11-21,COPD,125,22.2,no,31
+R100040,Laura,Sørensen,030463-7690,laura.sorensen40@example.org,1963-04-03,F,8000,Aarhus C,2023-10-11,Migraine,113,27.3,no,36
+R100041,Emil,Nielsen,310552-1541,emil.nielsen41@example.org,1952-05-31,M,8000,Aarhus C,2024-01-28,Hypertension,126,26.6,no,35
+R100042,Lars,Pedersen,100977-3981,lars.pedersen42@example.org,1977-09-10,M,2100,København Ø,2024-08-12,Asthma,93,28.4,no,27
+R100043,Laura,Pedersen,260664-4460,laura.pedersen43@example.org,1964-06-26,F,7100,Vejle,2023-01-30,Asthma,138,23.9,no,45
+R100044,Mads,Jørgensen,021287-0271,mads.jorgensen44@example.org,1987-12-02,M,9000,Aalborg,2024-07-31,Hypertension,145,29.1,no,39
+R100045,Laura,Christensen,120470-7790,laura.christensen45@example.org,1970-04-12,F,9000,Aalborg,2023-10-12,Asthma,130,27.0,yes,
+R100046,Jonas,Nielsen,210698-0411,jonas.nielsen46@example.org,1998-06-21,M,2100,København Ø,2023-09-11,Diabetes type 2,126,30.0,no,51
+R100047,Julie,Pedersen,200981-7160,julie.pedersen47@example.org,1981-09-20,F,8200,Aarhus N,2024-01-13,Hypertension,110,20.6,no,38
+R100048,Julie,Jensen,271267-5890,julie.jensen48@example.org,1967-12-27,F,9000,Aalborg,2024-02-11,Diabetes type 2,114,32.4,yes,62
+R100049,Frederik,Nielsen,091090-8011,frederik.nielsen49@example.org,1990-10-09,M,2100,København Ø,2023-12-22,Migraine,111,28.7,no,31
+R100050,Clara,Christensen,070197-9120,clara.christensen50@example.org,1997-01-07,F,7100,Vejle,2023-06-06,Asthma,141,29.2,no,44
+R100051,Noah,Jørgensen,290164-3301,noah.jorgensen51@example.org,1964-01-29,M,8000,Aarhus C,2023-03-30,Diabetes type 2,128,25.0,yes,53
+R100052,William,Hansen,280983-2171,william.hansen52@example.org,1983-09-28,M,5000,Odense C,2023-09-22,Asthma,114,26.0,yes,45
+R100053,Mette,Pedersen,170676-5000,mette.pedersen53@example.org,1976-06-17,F,6700,Esbjerg,2023-09-04,COPD,113,23.3,no,41
+R100054,Frederik,Christensen,160682-5661,frederik.christensen54@example.org,1982-06-16,M,6700,Esbjerg,2023-12-19,Asthma,126,32.1,no,37
+R100055,Oliver,Andersen,060960-1231,oliver.andersen55@example.org,1960-09-06,M,8000,Aarhus C,2023-11-20,Hypertension,133,17.2,no,41
+R100056,Søren,Pedersen,300766-2321,soren.pedersen56@example.org,1966-07-30,M,5000,Odense C,2023-07-03,Diabetes type 2,140,31.9,yes,59
+R100057,Mads,Sørensen,150349-8931,mads.sorensen57@example.org,1949-03-15,M,2100,København Ø,2024-08-10,Diabetes type 2,109,27.8,no,72
+R100058,Mette,Larsen,120284-0750,mette.larsen58@example.org,1984-02-12,F,2100,København Ø,2023-06-05,Hypertension,144,30.7,no,
+R100059,Maja,Larsen,240594-6100,maja.larsen59@example.org,1994-05-24,F,8000,Aarhus C,2024-06-19,Asthma,94,22.9,no,39
+R100060,Frederik,Jørgensen,270545-6241,frederik.jorgensen60@example.org,1945-05-27,M,2200,København N,2023-08-01,Diabetes type 2,121,28.6,no,55
+R100061,Frederik,Sørensen,160266-0331,frederik.sorensen61@example.org,1966-02-16,M,8000,Aarhus C,2023-10-23,Diabetes type 2,119,25.7,no,52
+R100062,Clara,Nielsen,081188-2300,clara.nielsen62@example.org,1988-11-08,F,2300,København S,2023-09-30,Hypertension,141,28.0,no,37
+R100063,Søren,Sørensen,131001-3111,soren.sorensen63@example.org,2001-10-13,M,9000,Aalborg,2023-10-06,Migraine,106,22.8,no,35
+R100064,Frederik,Andersen,270442-0931,frederik.andersen64@example.org,1942-04-27,M,8000,Aarhus C,2024-08-12,Migraine,167,22.2,no,37
+R100065,Emil,Sørensen,141264-1851,emil.sorensen65@example.org,1964-12-14,M,9000,Aalborg,2024-05-18,Hypertension,138,23.0,yes,38
+R100066,Freja,Larsen,130684-2950,freja.larsen66@example.org,1984-06-13,F,9000,Aalborg,2024-07-17,Hypertension,124,28.0,yes,43
+R100067,Noah,Jensen,291056-5301,noah.jensen67@example.org,1956-10-29,M,5000,Odense C,2024-05-25,COPD,119,27.2,no,33
+R100068,Lucas,Nielsen,030842-9961,lucas.nielsen68@example.org,1942-08-03,M,8000,Aarhus C,2023-06-12,Diabetes type 2,107,25.4,yes,
+R100069,Søren,Hansen,160984-9551,soren.hansen69@example.org,1984-09-16,M,8200,Aarhus N,2024-06-05,Diabetes type 2,110,29.3,no,55
+R100070,Mette,Andersen,230377-3480,mette.andersen70@example.org,1977-03-23,F,6700,Esbjerg,2023-10-01,Hypertension,136,26.3,no,42
+R100071,Laura,Rasmussen,140683-3530,laura.rasmussen71@example.org,1983-06-14,F,5000,Odense C,2024-07-19,Migraine,102,33.5,no,41
+R100072,Clara,Jensen,180768-7620,clara.jensen72@example.org,1968-07-18,F,7100,Vejle,2024-01-26,Asthma,120,34.1,no,36
+R100073,Lars,Hansen,230185-9881,lars.hansen73@example.org,1985-01-23,M,5000,Odense C,2023-04-13,COPD,143,32.2,no,
+R100074,Mads,Nielsen,130282-8001,mads.nielsen74@example.org,1982-02-13,M,8200,Aarhus N,2023-12-13,Sarcoidosis,115,21.6,no,44
+R100075,Lucas,Rasmussen,220343-6321,lucas.rasmussen75@example.org,1943-03-22,M,2200,København N,2023-08-29,Diabetes type 2,102,33.6,yes,58
+R100076,Laura,Hansen,121166-9250,laura.hansen76@example.org,1966-11-12,F,2100,København Ø,2023-02-17,Asthma,124,23.8,no,42
+R100077,Ida,Nielsen,050994-8910,ida.nielsen77@example.org,1994-09-05,F,9000,Aalborg,2023-09-04,COPD,133,28.9,no,35
+R100078,Oliver,Jensen,270981-9221,oliver.jensen78@example.org,1981-09-27,M,8200,Aarhus N,2024-07-13,Hypertension,160,31.3,no,32
+R100079,Oliver,Pedersen,060774-8731,oliver.pedersen79@example.org,1974-07-06,M,7100,Vejle,2023-04-20,Diabetes type 2,151,24.2,no,62
+R100080,Clara,Andersen,220940-5790,clara.andersen80@example.org,1940-09-22,F,2100,København Ø,2024-05-23,Diabetes type 2,123,24.1,no,59
+R100081,Mette,Jensen,190967-8070,mette.jensen81@example.org,1967-09-19,F,7100,Vejle,2023-02-04,Migraine,129,25.6,no,39
+R100082,Mads,Pedersen,091151-8051,mads.pedersen82@example.org,1951-11-09,M,6700,Esbjerg,2024-01-10,Migraine,112,27.0,no,49
+R100083,Søren,Sørensen,031046-1441,soren.sorensen83@example.org,1946-10-03,M,8000,Aarhus C,2024-02-11,Migraine,107,22.3,yes,
+R100084,William,Andersen,100692-3901,william.andersen84@example.org,1992-06-10,M,5000,Odense C,2023-04-21,Diabetes type 2,137,21.5,no,59
+R100085,Mette,Sørensen,100267-6640,mette.sorensen85@example.org,1967-02-10,F,9000,Aalborg,2023-04-30,Hypertension,138,27.3,no,40
+R100086,Lucas,Christensen,250200-9721,lucas.christensen86@example.org,2000-02-25,M,6700,Esbjerg,2024-03-05,Migraine,127,26.9,yes,34
+R100087,Frederik,Larsen,040265-0331,frederik.larsen87@example.org,1965-02-04,M,5000,Odense C,2023-08-11,COPD,113,28.0,no,43
+R100088,Clara,Andersen,100157-9910,clara.andersen88@example.org,1957-01-10,F,2200,København N,2024-04-10,Hypertension,133,24.0,yes,30
+R100089,Freja,Pedersen,190451-8050,freja.pedersen89@example.org,1951-04-19,F,8000,Aarhus C,2023-03-12,Migraine,124,29.7,yes,35
+R100090,Mads,Hansen,180688-2561,mads.hansen90@example.org,1988-06-18,M,2300,København S,2023-04-23,Hypertension,140,29.5,no,41
+R100091,Ida,Andersen,130944-1290,ida.andersen91@example.org,1944-09-13,F,9000,Aalborg,2024-06-22,Hypertension,134,22.5,no,34
+R100092,Maja,Andersen,030281-6580,maja.andersen92@example.org,1981-02-03,F,2100,København Ø,2023-03-04,COPD,121,29.4,no,32
+R100093,Mette,Christensen,280794-1510,mette.christensen93@example.org,1994-07-28,F,2200,København N,2023-05-10,Diabetes type 2,110,23.3,no,52
+R100094,Emil,Jørgensen,050878-1011,emil.jorgensen94@example.org,1978-08-05,M,2200,København N,2024-07-18,Diabetes type 2,133,19.4,no,63
+R100095,Noah,Nielsen,150168-4371,noah.nielsen95@example.org,1968-01-15,M,5000,Odense C,2023-09-19,Asthma,139,25.2,no,39
+R100096,Freja,Hansen,301189-0610,freja.hansen96@example.org,1989-11-30,F,6700,Esbjerg,2024-07-29,Asthma,124,25.0,no,32
+R100097,Emma,Jørgensen,120168-3600,emma.jorgensen97@example.org,1968-01-12,F,2200,København N,2024-08-14,Migraine,126,32.7,no,46
+R100098,Emma,Jørgensen,150460-8260,emma.jorgensen98@example.org,1960-04-15,F,9000,Aalborg,2024-07-28,Sarcoidosis,136,22.7,no,
+R100099,Ida,Andersen,200967-9430,ida.andersen99@example.org,1967-09-20,F,5000,Odense C,2023-12-26,Hypertension,123,27.9,yes,40
+R100100,Anna,Nielsen,040887-2200,anna.nielsen100@example.org,1987-08-04,F,9000,Aalborg,2024-03-05,COPD,115,30.2,yes,38
+R100101,Ida,Hansen,060695-0500,ida.hansen101@example.org,1995-06-06,F,2200,København N,2023-10-06,COPD,106,24.6,no,31
+R100102,Maja,Nielsen,191270-4400,maja.nielsen102@example.org,1970-12-19,F,2200,København N,2023-10-18,Migraine,104,27.5,no,
+R100103,Anna,Pedersen,150167-9680,anna.pedersen103@example.org,1967-01-15,F,8000,Aarhus C,2023-05-21,Diabetes type 2,120,29.0,no,55
+R100104,Søren,Larsen,181043-4461,soren.larsen104@example.org,1943-10-18,M,2100,København Ø,2024-04-15,Hypertension,137,30.4,no,31
+R100105,Søren,Larsen,141141-9891,soren.larsen105@example.org,1941-11-14,M,5000,Odense C,2023-06-25,Sarcoidosis,104,28.5,no,34
+R100106,Emil,Nielsen,040775-8911,emil.nielsen106@example.org,1975-07-04,M,8200,Aarhus N,2023-12-14,Diabetes type 2,124,25.8,yes,61
+R100107,Freja,Christensen,261197-8340,freja.christensen107@example.org,1997-11-26,F,2300,København S,2023-08-30,Hypertension,139,29.1,no,38
+R100108,Lucas,Jørgensen,271291-4591,lucas.jorgensen108@example.org,1991-12-27,M,5000,Odense C,2023-11-20,Hypertension,117,22.8,no,39
+R100109,Freja,Rasmussen,280846-3170,freja.rasmussen109@example.org,1946-08-28,F,7100,Vejle,2024-04-07,Hypertension,156,29.6,yes,
+R100110,Lucas,Jørgensen,230989-9771,lucas.jorgensen110@example.org,1989-09-23,M,2100,København Ø,2024-04-05,Migraine,115,24.1,yes,38
+R100111,Søren,Rasmussen,191297-1761,soren.rasmussen111@example.org,1997-12-19,M,2100,København Ø,2023-09-11,COPD,125,31.9,no,37
+R100112,Oliver,Larsen,020976-7931,oliver.larsen112@example.org,1976-09-02,M,5000,Odense C,2023-02-23,Asthma,126,27.7,no,35
+R100113,Søren,Jørgensen,150799-1441,soren.jorgensen113@example.org,1999-07-15,M,5000,Odense C,2023-11-14,Asthma,140,31.3,no,
+R100114,Mads,Rasmussen,200548-6611,mads.rasmussen114@example.org,1948-05-20,M,9000,Aalborg,2024-06-04,Asthma,135,30.4,no,38
+R100115,Jonas,Pedersen,040552-1581,jonas.pedersen115@example.org,1952-05-04,M,2200,København N,2023-10-30,Hypertension,120,26.8,no,28
+R100116,Mads,Hansen,220356-8511,mads.hansen116@example.org,1956-03-22,M,2300,København S,2024-03-24,Hypertension,132,21.9,no,42
+R100117,Lucas,Pedersen,281187-2441,lucas.pedersen117@example.org,1987-11-28,M,8200,Aarhus N,2024-04-25,Diabetes type 2,102,34.2,no,53
+R100118,Mads,Pedersen,310394-1411,mads.pedersen118@example.org,1994-03-31,M,8200,Aarhus N,2023-02-23,COPD,124,30.6,yes,32
+R100119,Søren,Hansen,210664-4601,soren.hansen119@example.org,1964-06-21,M,6700,Esbjerg,2023-05-31,Asthma,144,31.8,no,47
+R100120,Clara,Rasmussen,190773-2410,clara.rasmussen120@example.org,1973-07-19,F,9000,Aalborg,2023-03-25,Asthma,103,27.6,no,
+R100121,Ida,Jensen,260965-9390,ida.jensen121@example.org,1965-09-26,F,7100,Vejle,2023-05-23,COPD,132,26.6,no,
+R100122,Ida,Rasmussen,160894-5400,ida.rasmussen122@example.org,1994-08-16,F,9000,Aalborg,2023-04-24,Diabetes type 2,122,27.2,no,61
+R100123,Mette,Sørensen,140793-5480,mette.sorensen123@example.org,1993-07-14,F,2100,København Ø,2024-06-11,Migraine,122,29.2,no,34
+R100124,Mette,Rasmussen,080572-0690,mette.rasmussen124@example.org,1972-05-08,F,6700,Esbjerg,2024-07-11,Migraine,116,28.1,no,
+R100125,Clara,Christensen,031062-7650,clara.christensen125@example.org,1962-10-03,F,2100,København Ø,2024-01-01,Hypertension,121,23.4,no,45
+R100126,Anna,Christensen,251288-3460,anna.christensen126@example.org,1988-12-25,F,2300,København S,2024-04-20,COPD,107,21.6,no,
+R100127,Emma,Pedersen,061243-8100,emma.pedersen127@example.org,1943-12-06,F,8000,Aarhus C,2023-02-12,Asthma,135,25.0,no,33
+R100128,William,Jensen,301098-3391,william.jensen128@example.org,1998-10-30,M,8200,Aarhus N,2023-05-08,Asthma,119,23.3,no,39
+R100129,Mads,Sørensen,190884-3761,mads.sorensen129@example.org,1984-08-19,M,6700,Esbjerg,2023-10-01,Hypertension,134,25.4,no,40
+R100130,Mette,Christensen,180499-3020,mette.christensen130@example.org,1999-04-18,F,8200,Aarhus N,2024-04-01,Sarcoidosis,108,26.5,no,33
+R100131,Freja,Jørgensen,080179-2810,freja.jorgensen131@example.org,1979-01-08,F,2100,København Ø,2023-03-18,Asthma,107,32.4,no,40
+R100132,Ida,Nielsen,040361-7970,ida.nielsen132@example.org,1961-03-04,F,5000,Odense C,2024-01-06,Asthma,120,28.0,no,37
+R100133,William,Sørensen,241146-5871,william.sorensen133@example.org,1946-11-24,M,2300,København S,2024-06-26,Asthma,108,30.5,no,44
+R100134,Emil,Nielsen,260663-7931,emil.nielsen134@example.org,1963-06-26,M,8200,Aarhus N,2024-04-01,Diabetes type 2,134,30.3,no,58
+R100135,Mette,Hansen,230846-4620,mette.hansen135@example.org,1946-08-23,F,2300,København S,2024-03-31,Hypertension,146,17.3,no,32
+R100136,Mads,Hansen,060672-5201,mads.hansen136@example.org,1972-06-06,M,8000,Aarhus C,2023-05-05,Diabetes type 2,105,27.8,no,54
+R100137,Lucas,Rasmussen,230851-6261,lucas.rasmussen137@example.org,1951-08-23,M,2200,København N,2023-03-09,Diabetes type 2,106,30.8,yes,53
+R100138,Freja,Nielsen,140580-4770,freja.nielsen138@example.org,1980-05-14,F,6700,Esbjerg,2023-12-19,Hypertension,141,32.0,no,30
+R100139,Clara,Rasmussen,201244-8510,clara.rasmussen139@example.org,1944-12-20,F,2200,København N,2024-06-14,Hypertension,132,29.2,no,39
+R100140,Emma,Pedersen,211296-9790,emma.pedersen140@example.org,1996-12-21,F,6700,Esbjerg,2023-10-09,Hypertension,163,23.1,no,
+R100141,Ida,Jørgensen,160494-3450,ida.jorgensen141@example.org,1994-04-16,F,2100,København Ø,2023-01-30,Hypertension,123,32.5,no,39
+R100142,Frederik,Jensen,050984-9101,frederik.jensen142@example.org,1984-09-05,M,6700,Esbjerg,2023-10-24,Diabetes type 2,100,27.8,yes,57
+R100143,Laura,Larsen,110683-4750,laura.larsen143@example.org,1983-06-11,F,8000,Aarhus C,2023-12-15,Sarcoidosis,126,31.9,no,46
+R100144,Mads,Christensen,140386-5751,mads.christensen144@example.org,1986-03-14,M,2200,København N,2023-11-23,Diabetes type 2,112,27.7,no,62
+R100145,Jonas,Hansen,170569-9561,jonas.hansen145@example.org,1969-05-17,M,5000,Odense C,2023-07-14,Hypertension,140,22.2,no,37
+R100146,Lars,Nielsen,120475-5171,lars.nielsen146@example.org,1975-04-12,M,7100,Vejle,2023-09-04,Diabetes type 2,118,26.4,no,49
+R100147,Emil,Jensen,230849-4411,emil.jensen147@example.org,1949-08-23,M,2300,København S,2023-09-28,Asthma,108,27.3,no,31
+R100148,Emil,Andersen,060846-3951,emil.andersen148@example.org,1946-08-06,M,6700,Esbjerg,2024-04-06,Migraine,115,38.8,no,49
+R100149,William,Rasmussen,191072-7731,william.rasmussen149@example.org,1972-10-19,M,2300,København S,2023-07-23,Sarcoidosis,144,22.3,no,
+R100150,Lucas,Rasmussen,301280-1521,lucas.rasmussen150@example.org,1980-12-30,M,6700,Esbjerg,2023-05-24,Asthma,121,30.2,no,35
+R100151,Emil,Rasmussen,041087-5011,emil.rasmussen151@example.org,1987-10-04,M,8200,Aarhus N,2024-05-01,Hypertension,122,31.4,yes,28
+R100152,Oliver,Jørgensen,271091-2331,oliver.jorgensen152@example.org,1991-10-27,M,2100,København Ø,2024-08-20,COPD,111,29.7,no,44
+R100153,Sofie,Jensen,140591-9700,sofie.jensen153@example.org,1991-05-14,F,2200,København N,2023-07-15,Hypertension,123,28.5,no,39
+R100154,Ida,Rasmussen,080858-5740,ida.rasmussen154@example.org,1958-08-08,F,5000,Odense C,2024-05-04,Migraine,135,19.8,no,48
+R100155,Oliver,Jørgensen,090683-1961,oliver.jorgensen155@example.org,1983-06-09,M,8000,Aarhus C,2023-10-13,Migraine,113,36.1,no,38
+R100156,Lucas,Christensen,140490-9561,lucas.christensen156@example.org,1990-04-14,M,8200,Aarhus N,2023-10-22,Hypertension,116,22.5,no,34
+R100157,Mads,Andersen,101043-2941,mads.andersen157@example.org,1943-10-10,M,2200,København N,2023-12-21,COPD,110,21.5,no,39
+R100158,Mette,Jørgensen,240892-2450,mette.jorgensen158@example.org,1992-08-24,F,8000,Aarhus C,2023-02-21,Migraine,113,27.4,no,41
+R100159,Søren,Hansen,180640-9871,soren.hansen159@example.org,1940-06-18,M,6700,Esbjerg,2023-06-11,Asthma,107,20.2,no,31
+R100160,Oliver,Jensen,100148-6671,oliver.jensen160@example.org,1948-01-10,M,8000,Aarhus C,2024-07-01,Hypertension,118,29.1,no,35
+R100161,Clara,Sørensen,180956-9590,clara.sorensen161@example.org,1956-09-18,F,8200,Aarhus N,2023-02-08,Hypertension,130,32.2,no,34
+R100162,Maja,Sørensen,230664-1970,maja.sorensen162@example.org,1964-06-23,F,2200,København N,2023-12-05,Hypertension,146,26.3,yes,28
+R100163,Oliver,Jørgensen,020700-7751,oliver.jorgensen163@example.org,2000-07-02,M,8000,Aarhus C,2023-06-29,Sarcoidosis,137,20.3,yes,34
+R100164,Ida,Sørensen,110169-9580,ida.sorensen164@example.org,1969-01-11,F,8000,Aarhus C,2023-01-07,Diabetes type 2,121,23.8,no,62
+R100165,Frederik,Jørgensen,090141-2671,frederik.jorgensen165@example.org,1941-01-09,M,5000,Odense C,2023-08-30,Hypertension,128,23.1,no,32
+R100166,Emma,Christensen,210295-2260,emma.christensen166@example.org,1995-02-21,F,8000,Aarhus C,2023-05-17,COPD,96,30.8,no,45
+R100167,Emil,Pedersen,140362-6961,emil.pedersen167@example.org,1962-03-14,M,2200,København N,2024-06-22,COPD,110,26.3,no,46
+R100168,Ida,Christensen,060986-4520,ida.christensen168@example.org,1986-09-06,F,2200,København N,2023-07-30,Migraine,136,18.5,yes,38
+R100169,Mads,Rasmussen,080477-4671,mads.rasmussen169@example.org,1977-04-08,M,2100,København Ø,2024-07-26,COPD,117,24.0,no,
+R100170,Sofie,Jørgensen,210746-0460,sofie.jorgensen170@example.org,1946-07-21,F,9000,Aalborg,2023-12-19,Hypertension,130,26.6,no,44
+R100171,Mads,Hansen,210797-7461,mads.hansen171@example.org,1997-07-21,M,9000,Aalborg,2024-01-19,Asthma,120,18.5,yes,41
+R100172,Freja,Nielsen,050156-5500,freja.nielsen172@example.org,1956-01-05,F,9000,Aalborg,2024-06-25,Hypertension,133,24.2,yes,
+R100173,Lucas,Rasmussen,180178-5441,lucas.rasmussen173@example.org,1978-01-18,M,9000,Aalborg,2023-08-24,Diabetes type 2,115,27.6,yes,65
+R100174,Frederik,Jensen,040861-2111,frederik.jensen174@example.org,1961-08-04,M,2200,København N,2023-04-14,Sarcoidosis,107,32.3,yes,39
+R100175,Anna,Larsen,190579-2390,anna.larsen175@example.org,1979-05-19,F,6700,Esbjerg,2023-08-11,Hypertension,159,36.8,no,44
+R100176,Emma,Hansen,250399-5330,emma.hansen176@example.org,1999-03-25,F,8000,Aarhus C,2024-02-28,Diabetes type 2,114,26.2,no,66
+R100177,Emil,Sørensen,160344-9951,emil.sorensen177@example.org,1944-03-16,M,5000,Odense C,2024-01-26,Migraine,116,30.8,no,30
+R100178,Sofie,Andersen,131252-8250,sofie.andersen178@example.org,1952-12-13,F,7100,Vejle,2023-03-01,Migraine,136,23.5,no,40
+R100179,Emma,Pedersen,180869-6620,emma.pedersen179@example.org,1969-08-18,F,2200,København N,2024-04-05,Asthma,138,30.5,yes,36
+R100180,Sofie,Jørgensen,280300-5720,sofie.jorgensen180@example.org,2000-03-28,F,8000,Aarhus C,2024-05-05,Diabetes type 2,139,29.5,yes,54
+R100181,Sofie,Nielsen,191282-9360,sofie.nielsen181@example.org,1982-12-19,F,8000,Aarhus C,2023-07-29,Asthma,135,24.4,no,32
+R100182,Oliver,Christensen,020186-9031,oliver.christensen182@example.org,1986-01-02,M,7100,Vejle,2024-04-22,Hypertension,145,29.1,no,28
+R100183,Freja,Christensen,180277-0460,freja.christensen183@example.org,1977-02-18,F,8000,Aarhus C,2023-05-30,Hypertension,133,36.3,no,34
+R100184,Clara,Jørgensen,170162-5110,clara.jorgensen184@example.org,1962-01-17,F,6700,Esbjerg,2023-12-12,Diabetes type 2,125,27.4,no,51
+R100185,Mads,Christensen,090355-1431,mads.christensen185@example.org,1955-03-09,M,6700,Esbjerg,2024-05-15,Hypertension,148,24.5,yes,38
+R100186,Anna,Larsen,020552-8620,anna.larsen186@example.org,1952-05-02,F,8000,Aarhus C,2023-03-11,Hypertension,136,31.7,no,37
+R100187,Lars,Jensen,300987-5641,lars.jensen187@example.org,1987-09-30,M,9000,Aalborg,2023-01-13,Hypertension,125,26.4,no,48
+R100188,Mette,Nielsen,170187-1520,mette.nielsen188@example.org,1987-01-17,F,8000,Aarhus C,2023-07-16,Sarcoidosis,124,19.8,no,35
+R100189,Freja,Larsen,060381-5780,freja.larsen189@example.org,1981-03-06,F,8000,Aarhus C,2023-08-20,Diabetes type 2,112,19.9,yes,64
+R100190,Noah,Larsen,010889-4871,noah.larsen190@example.org,1989-08-01,M,2100,København Ø,2023-01-10,Hypertension,119,33.7,no,43
+R100191,Maja,Jensen,110860-2160,maja.jensen191@example.org,1960-08-11,F,7100,Vejle,2023-10-05,Hypertension,151,24.2,no,29
+R100192,Lars,Pedersen,300892-1471,lars.pedersen192@example.org,1992-08-30,M,9000,Aalborg,2023-03-20,Diabetes type 2,117,28.6,no,62
+R100193,Noah,Hansen,031101-7411,noah.hansen193@example.org,2001-11-03,M,2200,København N,2024-05-27,Asthma,134,28.4,no,31
+R100194,Lars,Andersen,020680-5021,lars.andersen194@example.org,1980-06-02,M,8000,Aarhus C,2023-12-31,Migraine,139,31.0,no,35
+R100195,Julie,Andersen,090262-7300,julie.andersen195@example.org,1962-02-09,F,2200,København N,2023-03-26,Diabetes type 2,132,32.2,yes,58
+R100196,Anna,Andersen,251179-3680,anna.andersen196@example.org,1979-11-25,F,8200,Aarhus N,2023-04-15,Hypertension,124,30.6,no,40
+R100197,Anna,Nielsen,021071-5670,anna.nielsen197@example.org,1971-10-02,F,2200,København N,2023-11-29,Asthma,134,27.3,no,36
+R100198,Clara,Hansen,150652-2750,clara.hansen198@example.org,1952-06-15,F,8200,Aarhus N,2023-10-02,COPD,106,28.5,no,40
+R100199,Søren,Christensen,310762-9661,soren.christensen199@example.org,1962-07-31,M,8000,Aarhus C,2024-05-22,Sarcoidosis,112,24.0,no,43
+R100200,Lucas,Christensen,190878-8351,lucas.christensen200@example.org,1978-08-19,M,2300,København S,2023-11-04,Asthma,122,22.1,no,31
+R100201,William,Andersen,111096-5021,william.andersen201@example.org,1996-10-11,M,8000,Aarhus C,2023-11-30,Asthma,118,33.9,no,41
+R100202,Laura,Pedersen,030579-8160,laura.pedersen202@example.org,1979-05-03,F,8200,Aarhus N,2023-03-12,Asthma,118,26.0,no,34
+R100203,Clara,Larsen,200846-4590,clara.larsen203@example.org,1946-08-20,F,7100,Vejle,2024-08-19,Asthma,95,25.1,no,36
+R100204,Mette,Pedersen,301298-6800,mette.pedersen204@example.org,1998-12-30,F,5000,Odense C,2023-06-20,Sarcoidosis,123,38.0,no,42
+R100205,Noah,Nielsen,111240-1001,noah.nielsen205@example.org,1940-12-11,M,8200,Aarhus N,2023-08-16,Migraine,121,21.9,no,38
+R100206,Freja,Jensen,240483-1070,freja.jensen206@example.org,1983-04-24,F,8200,Aarhus N,2024-03-01,Hypertension,146,34.1,no,47
+R100207,Lucas,Pedersen,011086-4941,lucas.pedersen207@example.org,1986-10-01,M,5000,Odense C,2024-05-02,Hypertension,117,29.3,yes,34
+R100208,Freja,Nielsen,300900-8190,freja.nielsen208@example.org,2000-09-30,F,2300,København S,2023-09-07,Migraine,142,28.1,no,40
+R100209,Clara,Hansen,200956-6550,clara.hansen209@example.org,1956-09-20,F,9000,Aalborg,2024-02-10,Hypertension,133,18.7,no,36
+R100210,Emma,Nielsen,181091-1040,emma.nielsen210@example.org,1991-10-18,F,6700,Esbjerg,2023-07-11,Asthma,122,25.0,no,43
+R100211,Frederik,Larsen,041194-4011,frederik.larsen211@example.org,1994-11-04,M,2200,København N,2023-12-23,Asthma,131,22.4,yes,36
+R100212,Freja,Nielsen,270561-3120,freja.nielsen212@example.org,1961-05-27,F,2200,København N,2023-07-07,Asthma,112,25.3,no,30
+R100213,Noah,Hansen,300883-6501,noah.hansen213@example.org,1983-08-30,M,6700,Esbjerg,2023-06-27,Migraine,126,29.9,no,42
+R100214,Laura,Hansen,030757-8340,laura.hansen214@example.org,1957-07-03,F,9000,Aalborg,2024-07-29,Migraine,108,24.7,no,32
+R100215,Mads,Nielsen,210990-0311,mads.nielsen215@example.org,1990-09-21,M,8000,Aarhus C,2023-10-27,Hypertension,132,31.9,no,27
+R100216,Julie,Nielsen,130164-7930,julie.nielsen216@example.org,1964-01-13,F,6700,Esbjerg,2024-01-11,Migraine,127,27.5,no,35
+R100217,Søren,Pedersen,160966-8951,soren.pedersen217@example.org,1966-09-16,M,2100,København Ø,2024-04-05,Diabetes type 2,109,33.0,no,68
+R100218,Julie,Christensen,011094-6470,julie.christensen218@example.org,1994-10-01,F,9000,Aalborg,2023-06-19,Sarcoidosis,121,28.7,yes,40
+R100219,Emil,Andersen,180793-5511,emil.andersen219@example.org,1993-07-18,M,2300,København S,2023-11-28,Diabetes type 2,119,30.1,yes,67
+R100220,Clara,Jensen,171164-8870,clara.jensen220@example.org,1964-11-17,F,2300,København S,2023-05-16,Diabetes type 2,120,29.1,no,62
+R100221,Mads,Jørgensen,250996-2751,mads.jorgensen221@example.org,1996-09-25,M,9000,Aalborg,2024-01-20,COPD,140,30.3,no,29
+R100222,Lucas,Christensen,170392-0021,lucas.christensen222@example.org,1992-03-17,M,2200,København N,2024-04-14,Asthma,133,31.2,no,28
+R100223,Laura,Andersen,181268-8480,laura.andersen223@example.org,1968-12-18,F,8200,Aarhus N,2023-12-12,Migraine,108,24.6,yes,32
+R100224,Mette,Sørensen,170641-1270,mette.sorensen224@example.org,1941-06-17,F,2300,København S,2024-03-27,COPD,137,37.1,no,37
+R100225,Mads,Andersen,160548-6701,mads.andersen225@example.org,1948-05-16,M,5000,Odense C,2023-09-14,Hypertension,117,33.2,no,33
+R100226,Søren,Nielsen,050240-2181,soren.nielsen226@example.org,1940-02-05,M,7100,Vejle,2023-03-21,Hypertension,141,23.0,yes,33
+R100227,Søren,Larsen,101151-4891,soren.larsen227@example.org,1951-11-10,M,2200,København N,2023-08-23,Asthma,140,30.9,no,34
+R100228,Ida,Nielsen,050887-5760,ida.nielsen228@example.org,1987-08-05,F,2100,København Ø,2023-06-18,COPD,129,25.4,no,40
+R100229,Jonas,Nielsen,050149-1431,jonas.nielsen229@example.org,1949-01-05,M,2200,København N,2024-01-29,Asthma,132,26.2,no,37
+R100230,Emma,Pedersen,130686-6210,emma.pedersen230@example.org,1986-06-13,F,6700,Esbjerg,2023-07-13,Asthma,126,26.6,no,39
+R100231,Noah,Nielsen,170861-5111,noah.nielsen231@example.org,1961-08-17,M,2200,København N,2024-06-24,Hypertension,162,26.2,no,42
+R100232,Laura,Nielsen,300641-6010,laura.nielsen232@example.org,1941-06-30,F,2200,København N,2023-01-15,Diabetes type 2,110,28.9,no,71
+R100233,Emil,Larsen,311277-7181,emil.larsen233@example.org,1977-12-31,M,9000,Aalborg,2023-03-26,Migraine,115,26.5,yes,
+R100234,Ida,Rasmussen,240469-4000,ida.rasmussen234@example.org,1969-04-24,F,2200,København N,2023-11-14,Asthma,119,19.3,yes,
+R100235,Søren,Sørensen,061294-6231,soren.sorensen235@example.org,1994-12-06,M,2100,København Ø,2023-11-13,Hypertension,148,31.3,no,45
+R100236,Freja,Hansen,100264-7500,freja.hansen236@example.org,1964-02-10,F,2200,København N,2023-01-31,Asthma,147,28.1,yes,
+R100237,Lucas,Rasmussen,220472-0561,lucas.rasmussen237@example.org,1972-04-22,M,7100,Vejle,2024-08-03,Hypertension,126,24.9,yes,40
+R100238,Maja,Jensen,141243-8790,maja.jensen238@example.org,1943-12-14,F,2100,København Ø,2023-09-08,Hypertension,123,27.7,no,48
+R100239,Freja,Pedersen,050577-9370,freja.pedersen239@example.org,1977-05-05,F,5000,Odense C,2023-10-05,Hypertension,125,25.2,yes,36
+R100240,Sofie,Rasmussen,130244-9760,sofie.rasmussen240@example.org,1944-02-13,F,9000,Aalborg,2023-03-12,COPD,135,21.9,no,43
+R100241,Emma,Jørgensen,070467-7570,emma.jorgensen241@example.org,1967-04-07,F,8000,Aarhus C,2024-04-20,Asthma,128,23.1,no,33
+R100242,Ida,Jensen,141076-0240,ida.jensen242@example.org,1976-10-14,F,8000,Aarhus C,2024-07-08,Asthma,109,22.4,no,
+R100243,Clara,Andersen,290449-2100,clara.andersen243@example.org,1949-04-29,F,6700,Esbjerg,2023-09-01,Asthma,117,27.1,no,36
+R100244,William,Sørensen,140847-5941,william.sorensen244@example.org,1947-08-14,M,2200,København N,2024-06-01,Hypertension,129,24.4,yes,32
+R100245,Mads,Pedersen,020366-2671,mads.pedersen245@example.org,1966-03-02,M,5000,Odense C,2024-02-07,Asthma,118,29.9,no,
+R100246,Julie,Nielsen,101253-1080,julie.nielsen246@example.org,1953-12-10,F,2300,København S,2024-04-05,COPD,119,28.9,no,38
+R100247,Søren,Nielsen,200254-8261,soren.nielsen247@example.org,1954-02-20,M,8200,Aarhus N,2023-02-11,Diabetes type 2,108,28.8,no,
+R100248,Noah,Rasmussen,230544-6931,noah.rasmussen248@example.org,1944-05-23,M,8200,Aarhus N,2023-09-24,Hypertension,125,31.0,no,38
+R100249,Laura,Nielsen,160752-1240,laura.nielsen249@example.org,1952-07-16,F,2100,København Ø,2023-03-05,Diabetes type 2,137,32.5,no,52
+R100250,Anna,Nielsen,270957-9240,anna.nielsen250@example.org,1957-09-27,F,7100,Vejle,2023-05-12,Hypertension,122,33.2,yes,31
+R100251,Lars,Hansen,270691-4431,lars.hansen251@example.org,1991-06-27,M,9000,Aalborg,2024-05-23,Hypertension,125,29.8,no,41
+R100252,Anna,Jørgensen,200795-6310,anna.jorgensen252@example.org,1995-07-20,F,8000,Aarhus C,2023-10-30,COPD,116,22.7,no,
+R100253,Mads,Larsen,221157-6581,mads.larsen253@example.org,1957-11-22,M,6700,Esbjerg,2023-09-13,Migraine,129,30.4,no,20
+R100254,Emil,Sørensen,121170-9341,emil.sorensen254@example.org,1970-11-12,M,6700,Esbjerg,2023-11-26,Asthma,121,27.9,no,48
+R100255,Laura,Rasmussen,250172-7850,laura.rasmussen255@example.org,1972-01-25,F,8000,Aarhus C,2023-06-13,Hypertension,139,27.0,yes,41
+R100256,Julie,Larsen,311071-9570,julie.larsen256@example.org,1971-10-31,F,2300,København S,2023-06-30,Diabetes type 2,103,23.0,no,59
+R100257,Julie,Pedersen,280284-5550,julie.pedersen257@example.org,1984-02-28,F,8200,Aarhus N,2023-06-29,COPD,120,28.3,yes,37
+R100258,Lars,Christensen,040295-2061,lars.christensen258@example.org,1995-02-04,M,2300,København S,2023-12-15,Hypertension,155,23.2,no,45
+R100259,Maja,Christensen,040746-3820,maja.christensen259@example.org,1946-07-04,F,9000,Aalborg,2024-08-23,Hypertension,137,25.2,no,42
+R100260,William,Hansen,010690-7101,william.hansen260@example.org,1990-06-01,M,5000,Odense C,2023-08-17,Migraine,126,23.4,yes,36
+R100261,Frederik,Jensen,020556-6161,frederik.jensen261@example.org,1956-05-02,M,5000,Odense C,2023-08-15,Migraine,129,30.7,yes,41
+R100262,Freja,Christensen,230155-6510,freja.christensen262@example.org,1955-01-23,F,2200,København N,2023-12-10,COPD,130,27.2,yes,31
+R100263,Clara,Sørensen,250877-9920,clara.sorensen263@example.org,1977-08-25,F,2300,København S,2024-02-28,COPD,139,29.7,no,33
+R100264,Ida,Sørensen,120846-8180,ida.sorensen264@example.org,1946-08-12,F,2100,København Ø,2023-10-29,Hypertension,122,35.9,no,
+R100265,Mads,Nielsen,280189-9641,mads.nielsen265@example.org,1989-01-28,M,2200,København N,2023-12-13,Sarcoidosis,147,26.2,no,29
+R100266,Anna,Nielsen,140969-2100,anna.nielsen266@example.org,1969-09-14,F,8000,Aarhus C,2024-02-24,Migraine,129,25.9,no,27
+R100267,Jonas,Nielsen,140644-4021,jonas.nielsen267@example.org,1944-06-14,M,6700,Esbjerg,2024-05-17,Hypertension,135,27.1,no,
+R100268,Mette,Jensen,260758-1740,mette.jensen268@example.org,1958-07-26,F,8200,Aarhus N,2023-03-25,COPD,127,24.1,yes,28
+R100269,Mads,Christensen,220374-3781,mads.christensen269@example.org,1974-03-22,M,2300,København S,2024-04-01,Hypertension,136,26.6,no,44
+R100270,Ida,Nielsen,090947-6840,ida.nielsen270@example.org,1947-09-09,F,5000,Odense C,2024-07-08,Asthma,137,26.0,no,43
+R100271,Frederik,Pedersen,230982-3061,frederik.pedersen271@example.org,1982-09-23,M,2200,København N,2024-02-09,Hypertension,116,18.4,no,37
+R100272,Laura,Hansen,301254-9950,laura.hansen272@example.org,1954-12-30,F,8000,Aarhus C,2023-07-17,Hypertension,139,27.4,no,40
+R100273,William,Nielsen,221047-3971,william.nielsen273@example.org,1947-10-22,M,6700,Esbjerg,2024-02-11,Migraine,143,25.5,yes,41
+R100274,Søren,Larsen,040653-1511,soren.larsen274@example.org,1953-06-04,M,2200,København N,2023-04-19,Migraine,125,20.1,no,46
+R100275,Lucas,Jørgensen,190894-4841,lucas.jorgensen275@example.org,1994-08-19,M,2100,København Ø,2023-06-26,Diabetes type 2,105,22.4,no,63
+R100276,Clara,Christensen,121201-2430,clara.christensen276@example.org,2001-12-12,F,2100,København Ø,2024-05-01,Diabetes type 2,123,26.5,no,56
+R100277,Sofie,Hansen,161266-9970,sofie.hansen277@example.org,1966-12-16,F,7100,Vejle,2023-11-25,Diabetes type 2,131,26.3,no,
+R100278,Clara,Sørensen,030586-8880,clara.sorensen278@example.org,1986-05-03,F,5000,Odense C,2023-02-27,Migraine,105,27.4,no,35
+R100279,Maja,Jørgensen,060842-1770,maja.jorgensen279@example.org,1942-08-06,F,8000,Aarhus C,2023-07-25,Hypertension,135,31.4,no,36
+R100280,Søren,Jensen,140961-3811,soren.jensen280@example.org,1961-09-14,M,7100,Vejle,2024-04-01,Hypertension,125,31.4,no,35
+R100281,Emma,Nielsen,290765-0280,emma.nielsen281@example.org,1965-07-29,F,9000,Aalborg,2023-02-20,Hypertension,147,21.5,no,38
+R100282,Noah,Rasmussen,191041-8851,noah.rasmussen282@example.org,1941-10-19,M,2100,København Ø,2024-04-30,Hypertension,143,23.7,no,
+R100283,Oliver,Larsen,101073-8721,oliver.larsen283@example.org,1973-10-10,M,5000,Odense C,2024-04-15,Diabetes type 2,108,27.7,no,63
+R100284,Anna,Rasmussen,040699-9890,anna.rasmussen284@example.org,1999-06-04,F,5000,Odense C,2024-07-28,Sarcoidosis,114,24.9,no,53
+R100285,Oliver,Andersen,241156-1531,oliver.andersen285@example.org,1956-11-24,M,6700,Esbjerg,2023-09-04,Hypertension,148,29.5,no,27
+R100286,Anna,Sørensen,090766-2650,anna.sorensen286@example.org,1966-07-09,F,9000,Aalborg,2024-02-19,Asthma,120,21.7,no,39
+R100287,William,Rasmussen,061266-8651,william.rasmussen287@example.org,1966-12-06,M,2300,København S,2024-07-25,Hypertension,124,25.8,no,44
+R100288,Søren,Pedersen,151171-2281,soren.pedersen288@example.org,1971-11-15,M,8200,Aarhus N,2024-03-06,Asthma,110,30.8,yes,38
+R100289,Jonas,Rasmussen,011050-8881,jonas.rasmussen289@example.org,1950-10-01,M,9000,Aalborg,2024-06-26,Diabetes type 2,124,20.1,no,64
+R100290,Noah,Jørgensen,180181-1461,noah.jorgensen290@example.org,1981-01-18,M,5000,Odense C,2023-07-04,Hypertension,118,27.4,no,37
+R100291,Ida,Jørgensen,190354-5010,ida.jorgensen291@example.org,1954-03-19,F,2200,København N,2023-05-13,Sarcoidosis,121,23.1,no,40
+R100292,Lars,Jensen,201187-2041,lars.jensen292@example.org,1987-11-20,M,5000,Odense C,2023-01-15,Asthma,122,22.1,yes,
+R100293,Sofie,Christensen,311267-1320,sofie.christensen293@example.org,1967-12-31,F,2200,København N,2024-01-28,Migraine,115,25.7,no,36
+R100294,Mads,Christensen,231283-3671,mads.christensen294@example.org,1983-12-23,M,8000,Aarhus C,2023-06-18,Asthma,131,29.8,no,38
+R100295,Julie,Rasmussen,280255-1260,julie.rasmussen295@example.org,1955-02-28,F,5000,Odense C,2023-02-08,Asthma,128,24.8,yes,56
+R100296,Anna,Nielsen,220577-4540,anna.nielsen296@example.org,1977-05-22,F,9000,Aalborg,2023-05-07,Migraine,133,26.9,yes,46
+R100297,Noah,Nielsen,080699-5321,noah.nielsen297@example.org,1999-06-08,M,8200,Aarhus N,2023-05-21,Asthma,124,25.4,yes,39
+R100298,Jonas,Jørgensen,021257-7961,jonas.jorgensen298@example.org,1957-12-02,M,8200,Aarhus N,2024-06-19,Diabetes type 2,125,24.4,no,63
+R100299,Laura,Christensen,140161-0020,laura.christensen299@example.org,1961-01-14,F,2100,København Ø,2023-04-02,Hypertension,144,21.9,yes,43
+R100300,Jonas,Sørensen,230766-2701,jonas.sorensen300@example.org,1966-07-23,M,7100,Vejle,2023-02-21,Hypertension,142,30.1,no,26
+R100301,Noah,Nielsen,090748-8711,noah.nielsen301@example.org,1948-07-09,M,2100,København Ø,2023-01-10,Hypertension,131,24.9,yes,29
+R100302,William,Hansen,190350-4101,william.hansen302@example.org,1950-03-19,M,9000,Aalborg,2024-04-12,Diabetes type 2,128,30.1,no,50
+R100303,Mette,Hansen,050445-9650,mette.hansen303@example.org,1945-04-05,F,2300,København S,2023-04-17,Asthma,133,24.6,no,29
+R100304,Ida,Sørensen,161083-1150,ida.sorensen304@example.org,1983-10-16,F,9000,Aalborg,2024-03-27,Hypertension,141,32.4,no,
+R100305,Emil,Rasmussen,290901-7171,emil.rasmussen305@example.org,2001-09-29,M,2200,København N,2024-03-19,Diabetes type 2,128,21.1,no,59
+R100306,Anna,Hansen,100585-8690,anna.hansen306@example.org,1985-05-10,F,7100,Vejle,2024-05-22,Hypertension,147,29.1,no,39
+R100307,Noah,Pedersen,270147-4701,noah.pedersen307@example.org,1947-01-27,M,7100,Vejle,2024-08-09,COPD,121,31.0,no,41
+R100308,Mette,Larsen,281276-0360,mette.larsen308@example.org,1976-12-28,F,6700,Esbjerg,2024-07-16,Hypertension,144,20.7,no,29
+R100309,William,Christensen,131144-8361,william.christensen309@example.org,1944-11-13,M,8000,Aarhus C,2024-04-10,Asthma,102,21.8,no,34
+R100310,Søren,Nielsen,110299-2271,soren.nielsen310@example.org,1999-02-11,M,2100,København Ø,2023-12-16,Asthma,136,17.9,yes,28
+R100311,Laura,Hansen,170976-1090,laura.hansen311@example.org,1976-09-17,F,8200,Aarhus N,2023-07-20,Diabetes type 2,119,32.7,no,66
+R100312,Søren,Larsen,030344-9481,soren.larsen312@example.org,1944-03-03,M,2200,København N,2024-04-06,COPD,105,18.6,yes,30
+R100313,Frederik,Sørensen,090885-7991,frederik.sorensen313@example.org,1985-08-09,M,2300,København S,2024-08-15,Hypertension,135,26.7,no,34
+R100314,Noah,Jørgensen,090462-2801,noah.jorgensen314@example.org,1962-04-09,M,9000,Aalborg,2023-12-18,Diabetes type 2,115,27.6,no,55
+R100315,Emil,Pedersen,080158-2141,emil.pedersen315@example.org,1958-01-08,M,8200,Aarhus N,2023-12-20,Hypertension,116,32.8,no,36
+R100316,Freja,Rasmussen,040283-5960,freja.rasmussen316@example.org,1983-02-04,F,9000,Aalborg,2024-06-30,Diabetes type 2,131,24.1,yes,
+R100317,Clara,Hansen,041044-6860,clara.hansen317@example.org,1944-10-04,F,2100,København Ø,2023-07-24,Diabetes type 2,122,24.6,no,58
+R100318,Maja,Jensen,060372-8330,maja.jensen318@example.org,1972-03-06,F,7100,Vejle,2023-04-15,Sarcoidosis,144,31.4,no,30
+R100319,Maja,Andersen,130899-0480,maja.andersen319@example.org,1999-08-13,F,9000,Aalborg,2024-02-01,Asthma,153,24.1,no,36
+R100320,Julie,Sørensen,260360-9330,julie.sorensen320@example.org,1960-03-26,F,5000,Odense C,2024-07-13,Sarcoidosis,121,29.1,no,46
+R100321,Mette,Hansen,040855-7520,mette.hansen321@example.org,1955-08-04,F,6700,Esbjerg,2023-05-03,Asthma,131,27.8,yes,43
+R100322,Lucas,Hansen,010843-1571,lucas.hansen322@example.org,1943-08-01,M,5000,Odense C,2023-02-22,Sarcoidosis,141,28.9,no,33
+R100323,Freja,Rasmussen,250959-9790,freja.rasmussen323@example.org,1959-09-25,F,2300,København S,2024-06-17,Hypertension,136,24.7,no,32
+R100324,William,Christensen,030566-2231,william.christensen324@example.org,1966-05-03,M,6700,Esbjerg,2024-05-01,Migraine,128,32.0,no,
+R100325,Jonas,Jørgensen,220995-2491,jonas.jorgensen325@example.org,1995-09-22,M,2100,København Ø,2023-11-25,Asthma,91,35.3,no,30
+R100326,Maja,Christensen,200286-8220,maja.christensen326@example.org,1986-02-20,F,6700,Esbjerg,2024-04-01,COPD,146,29.3,no,22
+R100327,Mette,Pedersen,200200-6440,mette.pedersen327@example.org,2000-02-20,F,8000,Aarhus C,2024-03-10,Hypertension,132,29.1,no,48
+R100328,Ida,Jensen,130381-7340,ida.jensen328@example.org,1981-03-13,F,5000,Odense C,2023-02-08,Hypertension,141,28.1,no,47
+R100329,Noah,Sørensen,150796-4141,noah.sorensen329@example.org,1996-07-15,M,9000,Aalborg,2023-11-20,Hypertension,144,25.5,yes,
+R100330,Mette,Christensen,090285-1080,mette.christensen330@example.org,1985-02-09,F,8200,Aarhus N,2023-11-05,Sarcoidosis,125,32.8,no,42
+R100331,Laura,Hansen,101187-2250,laura.hansen331@example.org,1987-11-10,F,2300,København S,2024-02-05,Migraine,117,32.4,no,49
+R100332,Maja,Rasmussen,060952-1260,maja.rasmussen332@example.org,1952-09-06,F,2100,København Ø,2023-01-06,Migraine,101,22.9,no,33
+R100333,Freja,Pedersen,070177-9270,freja.pedersen333@example.org,1977-01-07,F,6700,Esbjerg,2023-05-26,Hypertension,141,32.1,yes,44
+R100334,Emil,Nielsen,280166-6871,emil.nielsen334@example.org,1966-01-28,M,2200,København N,2023-09-14,Hypertension,146,28.7,no,44
+R100335,Sofie,Nielsen,310765-6340,sofie.nielsen335@example.org,1965-07-31,F,2200,København N,2023-07-18,Asthma,111,27.3,no,36
+R100336,Noah,Hansen,070640-3201,noah.hansen336@example.org,1940-06-07,M,8000,Aarhus C,2023-08-15,Asthma,115,26.4,no,43
+R100337,Lucas,Sørensen,080372-7931,lucas.sorensen337@example.org,1972-03-08,M,8200,Aarhus N,2024-05-13,Migraine,135,30.6,no,
+R100338,Maja,Pedersen,130863-7510,maja.pedersen338@example.org,1963-08-13,F,2200,København N,2023-03-19,Hypertension,144,22.4,no,28
+R100339,Maja,Andersen,031088-9150,maja.andersen339@example.org,1988-10-03,F,6700,Esbjerg,2024-04-28,Hypertension,125,25.1,no,40
+R100340,Laura,Rasmussen,161085-0920,laura.rasmussen340@example.org,1985-10-16,F,9000,Aalborg,2024-01-08,Migraine,130,27.2,no,46
+R100341,Mads,Hansen,231090-9711,mads.hansen341@example.org,1990-10-23,M,2300,København S,2024-05-10,Asthma,119,33.6,no,40
+R100342,Jonas,Jensen,251299-2111,jonas.jensen342@example.org,1999-12-25,M,6700,Esbjerg,2024-01-05,Asthma,109,27.8,no,
+R100343,Maja,Andersen,160863-5920,maja.andersen343@example.org,1963-08-16,F,6700,Esbjerg,2024-08-06,Hypertension,126,29.7,no,39
+R100344,Jonas,Rasmussen,290576-3611,jonas.rasmussen344@example.org,1976-05-29,M,5000,Odense C,2024-05-13,COPD,119,27.3,no,37
+R100345,Sofie,Nielsen,280286-6580,sofie.nielsen345@example.org,1986-02-28,F,8200,Aarhus N,2023-08-05,Hypertension,139,30.5,no,40
+R100346,Laura,Sørensen,221282-2150,laura.sorensen346@example.org,1982-12-22,F,2300,København S,2024-02-25,Hypertension,140,27.1,no,40
+R100347,Julie,Hansen,060145-1700,julie.hansen347@example.org,1945-01-06,F,8200,Aarhus N,2023-07-04,Migraine,137,25.6,no,47
+R100348,Sofie,Sørensen,310594-4820,sofie.sorensen348@example.org,1994-05-31,F,7100,Vejle,2023-06-24,Diabetes type 2,124,29.6,no,51
+R100349,Mads,Christensen,060980-6101,mads.christensen349@example.org,1980-09-06,M,2200,København N,2023-08-24,Asthma,117,28.3,no,42
+R100350,Julie,Nielsen,011255-4870,julie.nielsen350@example.org,1955-12-01,F,2100,København Ø,2024-06-28,Migraine,111,27.0,yes,34
+R100351,Emil,Larsen,240373-8951,emil.larsen351@example.org,1973-03-24,M,2100,København Ø,2024-06-26,Asthma,124,34.1,yes,31
+R100352,Mads,Andersen,211082-7841,mads.andersen352@example.org,1982-10-21,M,8000,Aarhus C,2023-03-27,Diabetes type 2,132,22.9,yes,54
+R100353,Julie,Rasmussen,280750-5320,julie.rasmussen353@example.org,1950-07-28,F,2100,København Ø,2024-01-20,Diabetes type 2,118,23.8,no,63
+R100354,Emil,Larsen,290890-3741,emil.larsen354@example.org,1990-08-29,M,8200,Aarhus N,2024-02-11,Diabetes type 2,136,21.0,no,63
+R100355,Oliver,Andersen,281091-3521,oliver.andersen355@example.org,1991-10-28,M,9000,Aalborg,2023-05-22,Hypertension,134,22.6,no,39
+R100356,Emil,Jørgensen,310501-7231,emil.jorgensen356@example.org,2001-05-31,M,2100,København Ø,2023-06-14,Asthma,129,27.4,no,
+R100357,Frederik,Larsen,281147-0651,frederik.larsen357@example.org,1947-11-28,M,8200,Aarhus N,2023-08-16,Asthma,121,28.0,no,38
+R100358,Frederik,Jensen,220955-6551,frederik.jensen358@example.org,1955-09-22,M,7100,Vejle,2024-03-25,Hypertension,140,32.6,no,37
+R100359,Anna,Christensen,180661-6700,anna.christensen359@example.org,1961-06-18,F,2100,København Ø,2023-06-11,Hypertension,138,34.0,no,37
+R100360,Frederik,Pedersen,130686-0151,frederik.pedersen360@example.org,1986-06-13,M,2200,København N,2023-04-03,Migraine,117,34.4,no,28
+R100361,Julie,Pedersen,181080-9520,julie.pedersen361@example.org,1980-10-18,F,9000,Aalborg,2024-08-11,Hypertension,160,26.7,yes,43
+R100362,William,Nielsen,180186-9791,william.nielsen362@example.org,1986-01-18,M,8200,Aarhus N,2024-07-04,Migraine,121,31.3,no,33
+R100363,Lucas,Jørgensen,150642-4931,lucas.jorgensen363@example.org,1942-06-15,M,2200,København N,2023-09-22,Hypertension,135,21.8,no,44
+R100364,Noah,Christensen,030586-5481,noah.christensen364@example.org,1986-05-03,M,2100,København Ø,2023-09-27,Diabetes type 2,119,30.9,no,54
+R100365,William,Christensen,100859-9151,william.christensen365@example.org,1959-08-10,M,8200,Aarhus N,2023-07-07,Diabetes type 2,134,24.3,no,58
+R100366,Sofie,Pedersen,270562-8560,sofie.pedersen366@example.org,1962-05-27,F,5000,Odense C,2023-06-09,Hypertension,138,28.1,yes,36
+R100367,William,Jørgensen,180468-5041,william.jorgensen367@example.org,1968-04-18,M,8200,Aarhus N,2024-05-17,Hypertension,135,35.9,no,36
+R100368,Anna,Rasmussen,181277-4890,anna.rasmussen368@example.org,1977-12-18,F,6700,Esbjerg,2023-02-03,Migraine,108,33.5,no,34
+R100369,Lars,Jensen,230600-2151,lars.jensen369@example.org,2000-06-23,M,9000,Aalborg,2024-08-17,Hypertension,136,24.5,no,44
+R100370,Emma,Sørensen,010195-3510,emma.sorensen370@example.org,1995-01-01,F,5000,Odense C,2023-07-08,COPD,110,28.9,no,33
+R100371,Julie,Hansen,310891-7020,julie.hansen371@example.org,1991-08-31,F,8000,Aarhus C,2023-04-13,Diabetes type 2,131,28.7,no,51
+R100372,Ida,Sørensen,151140-1800,ida.sorensen372@example.org,1940-11-15,F,9000,Aalborg,2024-05-26,Hypertension,158,26.8,no,35
+R100373,Emil,Jørgensen,120444-4071,emil.jorgensen373@example.org,1944-04-12,M,2200,København N,2023-06-17,Hypertension,114,27.7,yes,41
+R100374,William,Andersen,200572-3681,william.andersen374@example.org,1972-05-20,M,6700,Esbjerg,2024-07-24,Diabetes type 2,115,30.4,no,54
+R100375,William,Christensen,240500-5221,william.christensen375@example.org,2000-05-24,M,7100,Vejle,2024-04-02,Hypertension,120,24.6,no,40
+R100376,Freja,Larsen,190896-6270,freja.larsen376@example.org,1996-08-19,F,9000,Aalborg,2023-03-15,Hypertension,139,29.5,no,36
+R100377,Lucas,Christensen,270892-5331,lucas.christensen377@example.org,1992-08-27,M,7100,Vejle,2024-02-28,Hypertension,144,27.3,no,38
+R100378,Sofie,Hansen,150875-1050,sofie.hansen378@example.org,1975-08-15,F,2200,København N,2023-03-07,COPD,119,26.7,no,37
+R100379,Mette,Larsen,031067-2340,mette.larsen379@example.org,1967-10-03,F,8000,Aarhus C,2023-10-18,COPD,117,25.5,yes,35
+R100380,Freja,Christensen,190982-4780,freja.christensen380@example.org,1982-09-19,F,6700,Esbjerg,2023-10-06,Migraine,92,30.6,no,41
+R100381,William,Sørensen,310588-2321,william.sorensen381@example.org,1988-05-31,M,2200,København N,2024-03-28,Diabetes type 2,136,24.9,yes,61
+R100382,Freja,Andersen,030282-5470,freja.andersen382@example.org,1982-02-03,F,2100,København Ø,2024-05-18,COPD,115,33.5,no,28
+R100383,Clara,Rasmussen,200379-4040,clara.rasmussen383@example.org,1979-03-20,F,8000,Aarhus C,2023-06-17,Asthma,109,28.3,no,
+R100384,Oliver,Rasmussen,120264-4221,oliver.rasmussen384@example.org,1964-02-12,M,8000,Aarhus C,2023-03-12,Hypertension,127,28.3,no,39
+R100385,Frederik,Sørensen,051156-3281,frederik.sorensen385@example.org,1956-11-05,M,2100,København Ø,2023-06-05,Hypertension,137,26.8,no,36
+R100386,Sofie,Nielsen,080753-0150,sofie.nielsen386@example.org,1953-07-08,F,7100,Vejle,2023-08-11,Asthma,128,20.8,no,42
+R100387,Lars,Christensen,130347-8631,lars.christensen387@example.org,1947-03-13,M,2300,København S,2023-02-27,Diabetes type 2,122,25.5,no,62
+R100388,Mette,Pedersen,100774-7890,mette.pedersen388@example.org,1974-07-10,F,7100,Vejle,2023-09-11,Hypertension,156,29.0,no,
+R100389,Noah,Andersen,251268-1621,noah.andersen389@example.org,1968-12-25,M,2100,København Ø,2024-07-16,Migraine,140,30.3,no,42
+R100390,Sofie,Nielsen,030361-6480,sofie.nielsen390@example.org,1961-03-03,F,9000,Aalborg,2023-11-29,Hypertension,139,29.8,yes,37
+R100391,Frederik,Hansen,260473-7891,frederik.hansen391@example.org,1973-04-26,M,2200,København N,2023-09-12,Hypertension,133,20.9,yes,37
+R100392,Freja,Hansen,130288-8100,freja.hansen392@example.org,1988-02-13,F,2200,København N,2023-05-09,COPD,125,38.2,no,37
+R100393,Anna,Larsen,180272-7410,anna.larsen393@example.org,1972-02-18,F,2300,København S,2023-09-14,Hypertension,113,22.7,no,38
+R100394,Julie,Hansen,081088-3560,julie.hansen394@example.org,1988-10-08,F,5000,Odense C,2024-04-24,Diabetes type 2,132,23.0,no,62
+R100395,Oliver,Rasmussen,071272-4641,oliver.rasmussen395@example.org,1972-12-07,M,2100,København Ø,2024-06-02,Asthma,134,26.2,no,25
+R100396,Freja,Nielsen,210199-9900,freja.nielsen396@example.org,1999-01-21,F,6700,Esbjerg,2024-02-01,Diabetes type 2,108,26.3,no,54
+R100397,Mette,Rasmussen,100299-0680,mette.rasmussen397@example.org,1999-02-10,F,2100,København Ø,2023-05-13,Hypertension,128,28.9,yes,34
+R100398,Julie,Larsen,090199-5010,julie.larsen398@example.org,1999-01-09,F,6700,Esbjerg,2023-09-20,Hypertension,124,31.1,no,
+R100399,Søren,Sørensen,270497-0621,soren.sorensen399@example.org,1997-04-27,M,5000,Odense C,2024-07-25,Asthma,131,20.6,no,
