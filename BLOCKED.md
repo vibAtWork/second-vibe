@@ -1,3 +1,3 @@
 # Blocked
 
-Nothing blocked so far.
+- **Verbatim GDPR text not fetched (2026-11-08).** eur-lex.europa.eu, www.legislation.gov.uk and gdpr-info.eu are refused by this session's egress proxy. AGENTS.md forbids changing environment config, so I did not request access. Article references in `projects/tablescrub` (GdprAssessment, README) were checked against web-search snippets of the Regulation's text and my knowledge of it, and are paraphrased rather than quoted. **To do:** allow eur-lex.europa.eu and re-check each cited article (4(1), 4(5), 5(1)(b)-(c), 6, 9, 9(2)(j), 9(4), 10, 14(5)(b), 26, 28(3), 30, 32, 35(3)(b), 44-46, 49, 87, 89(1), Recital 26).

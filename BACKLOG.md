@@ -14,3 +14,6 @@ Prioritised. Done items are struck through.
 10. tablescrub: dictionary import: upload an existing codebook CSV to fill in column descriptions
 11. CLI wrapper around the same core (`tablescrub redact in.xlsx --plan plan.json --format datapackage`)
 12. Validate exported datapackage.json against the official Frictionless JSON schema in tests
+13. tablescrub: re-check GDPR article references against EUR-Lex once the host is reachable (BLOCKED.md)
+14. tablescrub: one-click "anonymise for AI" preset (drop identifiers, generalise QIs until k ≥ target, aggregate option)
+15. tablescrub: national-law profiles (e.g. Danish Databeskyttelsesloven rules for CPR numbers) as optional checklist add-ons

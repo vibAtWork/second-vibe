@@ -184,6 +184,7 @@ public final class Server {
         m.put("filename", u.filename);
         m.put("flagged", table.columns().stream().filter(c -> c.pii().flagged()).count());
         m.put("actions", Action.values());
+        m.put("recipients", tablescrub.redact.Recipient.values());
         m.put("formats", Format.values());
         m.put("ttl", cfg.ttlMinutes());
         return m;
@@ -265,6 +266,7 @@ public final class Server {
                     cn.putObject("pii").put("category", c.pii().category()).put("level", c.pii().level().name())
                             .put("reason", c.pii().reason()).put("suggestion", c.pii().suggestion());
                 }
+                if (c.special() != null) cn.put("gdpr", c.special().tag());
             }
         }
         ctx.json(root);

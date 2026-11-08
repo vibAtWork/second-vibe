@@ -16,7 +16,8 @@ public record Column(
         List<String> samples,
         String min,
         String max,
-        PiiHint pii) {
+        PiiHint pii,
+        SpecialCategory special) {
 
     public double fillRatio(int rowCount) {
         return rowCount == 0 ? 0 : (double) nonNull / rowCount;

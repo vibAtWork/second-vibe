@@ -59,7 +59,8 @@ public final class PlanParser {
                     f.containsKey("q" + i), first(f, "d" + i), first(f, "n" + i)));
         }
         return new Plan(rules, secret(first(f, "secret"), defaultSecret), parseK(first(f, "k")),
-                f.containsKey("suppress"), first(f, "title"), first(f, "description"), first(f, "license"));
+                f.containsKey("suppress"), first(f, "title"), first(f, "description"), first(f, "license"),
+                tablescrub.redact.Recipient.parse(first(f, "recipient")));
     }
 
     /**
@@ -83,7 +84,8 @@ public final class PlanParser {
         }
         return new Plan(rules, secret(n.path("secret").asText(""), defaultSecret),
                 n.path("k").asInt(DEFAULT_K), n.path("suppressRows").asBoolean(false),
-                n.path("title").asText(""), n.path("description").asText(""), n.path("license").asText(""));
+                n.path("title").asText(""), n.path("description").asText(""), n.path("license").asText(""),
+                tablescrub.redact.Recipient.parse(n.path("recipient").asText("")));
     }
 
     static byte[] secret(String userSecret, byte[] dflt) {

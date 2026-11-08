@@ -11,3 +11,6 @@
 - **In-memory storage with a TTL**: avoids leaving sensitive files on disk. The trade-off is a size limit (documented).
 - **No auth or CSRF**: binds to 127.0.0.1 by default. Shared deployment should go behind an authenticating proxy (backlog item).
 - **Header keyword "name"** only counts as personal when it stands alone or next to a person word, to avoid flagging "gene name", "product name" and similar.
+- **GDPR layer (user request)**: special-category tags (Art. 9 / 10 / 87) are separate from the identifier flags, because Art. 9 data such as a diagnosis is not identifying in itself but raises the legal bar. The output status is derived from what remains after treatment (direct identifiers kept → personal; hashes/pseudonyms → pseudonymised, Art. 4(5) / Recital 26; no k assessment or k below target → at risk; otherwise an anonymisation candidate). The checklist depends on the chosen recipient.
+- **No case-law claims in the app**: the guidance only cites articles and recitals of Regulation (EU) 2016/679, with a disclaimer to consult the DPO, because the official text could not be fetched from this session (see BLOCKED.md).
+- **Health data read broadly** (blood pressure, BMI, HbA1c, smoking count as health data), but generic words like "condition", "procedure" and "party" are excluded to avoid false positives in experimental-design data.

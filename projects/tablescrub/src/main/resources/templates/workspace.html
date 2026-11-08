@@ -62,6 +62,8 @@
               <span th:if="${c.pii().flagged()}" class="pill" th:classappend="${cv.level()}"
                     th:text="${c.pii().category()}" th:title="${c.pii().reason()}">email</span>
               <span th:if="${c.unique() and !c.pii().flagged()}" class="pill quiet" title="Every value is unique">unique</span>
+              <span th:if="${c.special() != null}" class="pill gdpr" th:text="${c.special().article}"
+                    th:title="'GDPR ' + ${c.special().tag()}">Art. 9</span>
             </td>
             <td>
               <select th:name="'a' + ${i}" class="action" th:data-type="${c.type().name()}">
@@ -94,6 +96,12 @@
       </div>
       <div>
         <h3>Privacy settings</h3>
+        <label>Who will receive this export?
+          <select name="recipient">
+            <option th:each="r : ${recipients}" th:value="${r.name()}" th:text="${r.label}"
+                    th:selected="${r == plan.recipient()}">EEA</option>
+          </select>
+        </label>
         <label>Linkage secret for <em>Keyed hash</em> (optional)
           <input type="password" name="secret" autocomplete="off" placeholder="blank = random key for this upload">
         </label>
@@ -134,6 +142,18 @@
       <span th:unless="${k.ok()}"> · below target: generalise more, suppress rare values or drop small groups</span>
     </div>
     <div th:unless="${k.enabled()}" class="muted small">Tick <b>QI</b> on columns that could identify people in combination (age, sex, postcode, dates, rare diagnoses…) to see the k-anonymity of the output.</div>
+  </div>
+  <div th:with="g=${preview.gdpr()}" class="gdpr" th:classappend="${g.status().css}">
+    <div><b>GDPR: <span th:text="${g.status().label}">Personal data</span></b> · <span th:text="${g.summary()}">summary</span></div>
+    <div class="small" th:if="${!g.specials().isEmpty()}">Special categories in output:
+      <span th:each="sc, st : ${g.specials()}" th:text="${sc.tag()} + (${st.last} ? '' : '; ')">Art. 9 health</span></div>
+    <details>
+      <summary th:text="'Checklist for ' + ${plan.recipient().label} + ' (' + ${g.checklist().size()} + ' items, included in exports)'">Checklist</summary>
+      <ul class="checklist"><li th:each="c : ${g.checklist()}" th:text="${c}">item</li></ul>
+      <ul class="small muted"><li th:each="f : ${g.findings()}" th:text="${f}">finding</li></ul>
+      <p class="small muted">Automated guidance, not legal advice. Confirm with your DPO.
+        <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj" target="_blank" rel="noopener noreferrer">Regulation (EU) 2016/679</a></p>
+    </details>
   </div>
   <details th:if="${!preview.log().isEmpty()}" class="log">
     <summary th:text="'Redaction log (' + ${preview.log().size()} + ' entries, included in every export)'">log</summary>

@@ -20,7 +20,7 @@ upload ─► reader ─► RawTable ─► Profiler ─► Table (common IR) �
 
 ```bash
 cd projects/tablescrub
-mvn package            # runs the 28 tests and builds a self-contained jar
+mvn package            # runs the 32 tests and builds a self-contained jar
 java -jar target/tablescrub-0.1.0.jar
 # open http://127.0.0.1:7070 and upload samples/cohort.csv (400 synthetic patients)
 ```
@@ -91,6 +91,42 @@ rows are in groups below the target. "Drop rows in groups smaller than k" remove
 | **Markdown for AI** | context note, provenance, data dictionary, redaction log, then the data as a CSV block. Paste the whole file into an LLM chat |
 | **Data Package (zip)** | [Frictionless](https://specs.frictionlessdata.io/data-package/) `datapackage.json` (Table Schema, licence, sources, `x-redaction` log and k stats) + `data.csv` + `README.md` |
 
+## GDPR support
+
+The tool assumes most users are EU/EEA research institutions under the GDPR (Regulation (EU) 2016/679).
+
+![GDPR panel](docs/gdpr-panel.png)
+
+- **Special-category detection.** Columns are tagged by header as **Art. 9** data (health, genetic,
+  biometric, racial or ethnic origin, political opinions, religion, trade union membership, sex life
+  or orientation), **Art. 10** data (criminal convictions and offences) or **Art. 87** data (national
+  identification numbers such as CPR). Health data is read broadly, the way the GDPR reads it:
+  diagnoses and medication, but also blood pressure, BMI, HbA1c and smoking status.
+- **Live status of the output.** One of four, worked out from what is left after your treatments:
+  - *Personal data*: direct identifiers are still present.
+  - *Pseudonymised personal data*: identifiers are hashed or replaced with pseudonyms. This is still
+    personal data under Art. 4(5) and Recital 26.
+  - *Probably still personal data*: identifiers are gone, but k-anonymity was not assessed or misses the target.
+  - *Anonymisation candidate*: no identifiers or pseudonyms remain and the k target is met. The data
+    may fall outside the GDPR under Recital 26, but only after a documented, context-specific judgement.
+- **Recipient-specific checklist.** Choose who receives the export: an EU/EEA partner, a partner
+  outside the EEA, an AI service, an open release, or internal use. The checklist then covers what
+  applies:
+  - legal basis (Art. 6, plus Art. 9(2)(j) and Art. 89(1) for research)
+  - the agreement with the recipient (Art. 28 processor, Art. 26 joint controllers)
+  - international transfers (Chapter V: Art. 45 adequacy, Art. 46 standard contractual clauses)
+  - DPIA (Art. 35(3)(b)), minimisation (Art. 5(1)(c)), transparency (Art. 14(5)(b)), records (Art. 30) and security (Art. 32)
+  - for AI services: approved provider under a DPA, where data is processed, retention and training settings
+  - for open release: a hard stop unless the data is an anonymisation candidate
+- **Every export carries the assessment.** Markdown, README and HTML get a "GDPR notes" section (the
+  Markdown-for-AI version also tells the assistant not to attempt re-identification). The Data
+  Package gets `x-gdpr` plus a `x-gdpr-category` per field, JSON gets `provenance.gdpr`, and Excel
+  gets a `gdpr` sheet.
+
+The assessment is automated guidance, **not legal advice**. It cannot judge legal bases, contracts
+or the recipient's other data. Confirm with your Data Protection Officer. Article references were
+written against the official text (EUR-Lex, CELEX 32016R0679); verify the wording there.
+
 ## API (for scripts and pipelines)
 
 ```bash
@@ -112,7 +148,7 @@ curl -F file=@samples/cohort.csv -F format=datapackage -o cohort.zip \
 curl http://127.0.0.1:7070/api/formats   # list the format ids
 ```
 
-Other plan fields: `secret` (linkage key for HASH), `sheet` (form field: table index for workbooks),
+Other plan fields: `recipient` (`EEA_INSTITUTION`, `THIRD_COUNTRY`, `AI_SERVICE`, `PUBLIC`, `INTERNAL`), `secret` (linkage key for HASH), `sheet` (form field: table index for workbooks),
 `description`. A column's value can be a bare action string or an object
 `{action, param, qi, description, rename}`.
 

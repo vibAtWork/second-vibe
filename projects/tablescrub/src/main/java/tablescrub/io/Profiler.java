@@ -4,6 +4,7 @@ import tablescrub.model.Column;
 import tablescrub.model.ColumnType;
 import tablescrub.model.PiiHint;
 import tablescrub.model.RawTable;
+import tablescrub.model.SpecialCategory;
 import tablescrub.model.Table;
 
 import java.math.BigDecimal;
@@ -129,9 +130,10 @@ public final class Profiler {
             for (String[] r : rows) if (r[idx] != null) { distinct.add(r[idx]); if (samples.size() < 5) samples.add(r[idx]); }
         }
         Column provisional = new Column(idx, name, type, nonNull, distinct.size(), capped,
-                List.copyOf(samples), min, max, PiiHint.NONE);
+                List.copyOf(samples), min, max, PiiHint.NONE, null);
         PiiHint hint = PiiDetector.detect(provisional, rows);
-        return new Column(idx, name, type, nonNull, distinct.size(), capped, List.copyOf(samples), min, max, hint);
+        SpecialCategory special = SpecialCategories.detect(name, hint);
+        return new Column(idx, name, type, nonNull, distinct.size(), capped, List.copyOf(samples), min, max, hint, special);
     }
 
     private static boolean allDateOrDateTime(List<String[]> rows, int idx) {

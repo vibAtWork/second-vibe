@@ -63,3 +63,8 @@ table.data td.null { background: repeating-linear-gradient(45deg, transparent 0 
 .kbox.ok b { color: var(--ok); } .kbox.bad b { color: var(--direct); }
 details.log { margin: .5rem 0; } details.log summary { cursor: pointer; color: var(--muted); }
 .intro ol li { margin-bottom: .3rem; }
+.pill.gdpr { color: var(--accent); margin-top: .2rem; }
+.gdpr { padding: .6rem .8rem; border-radius: 6px; margin: .5rem 0; border: 1px solid var(--line); border-left-width: 4px; }
+.gdpr.bad { border-left-color: var(--direct); } .gdpr.warn { border-left-color: var(--quasi); } .gdpr.ok { border-left-color: var(--ok); }
+.gdpr summary { cursor: pointer; color: var(--muted); margin-top: .3rem; }
+.gdpr ul.checklist li { margin-bottom: .25rem; }

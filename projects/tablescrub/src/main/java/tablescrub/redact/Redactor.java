@@ -103,10 +103,14 @@ public final class Redactor {
             String name = base;
             for (int s = 2; !usedNames.add(name.toLowerCase(Locale.ROOT)); s++) name = base + "_" + s;
             outCols.add(new OutColumn(name, col.name(), tx[c].outType, rule.action(), rule.param(),
-                    rule.description(), col.pii().category(), nonNull, distinct.size()));
+                    rule.description(), col.pii().category(), col.pii().level(), col.special(), nonNull, distinct.size()));
         }
+        List<RedactedTable.DroppedColumn> dropped = new ArrayList<>();
+        for (int c = 0; c < n; c++)
+            if (plan.rule(c).action() == Action.DROP)
+                dropped.add(new RedactedTable.DroppedColumn(cols.get(c).name(), cols.get(c).pii().category(), cols.get(c).special()));
         String title = plan.title() == null || plan.title().isBlank() ? table.name() : plan.title().strip();
-        return new RedactedTable(title, table.name(), table.sourceFormat(), table.rowCount(), outCols, rows, log,
+        return new RedactedTable(title, table.name(), table.sourceFormat(), table.rowCount(), outCols, dropped, rows, log,
                 kStats, plan);
     }
 

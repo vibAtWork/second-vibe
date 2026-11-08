@@ -159,7 +159,7 @@ final class Writers {
             }
 
             Sheet dict = wb.createSheet("data_dictionary");
-            String[] dh = {"column", "type", "description", "original column", "treatment", "flagged as", "non-empty", "distinct"};
+            String[] dh = {"column", "type", "description", "original column", "treatment", "flagged as", "non-empty", "distinct", "GDPR category"};
             Row dr = dict.createRow(0);
             for (int i = 0; i < dh.length; i++) { Cell c = dr.createCell(i); c.setCellValue(dh[i]); c.setCellStyle(head); }
             int dn = 1;
@@ -173,7 +173,22 @@ final class Writers {
                 row.createCell(5).setCellValue(c.piiCategory() == null ? "" : c.piiCategory());
                 row.createCell(6).setCellValue(c.nonNull());
                 row.createCell(7).setCellValue(c.distinct());
+                row.createCell(8).setCellValue(c.special() == null ? "" : c.special().tag());
             }
+
+            Sheet gs = wb.createSheet("gdpr");
+            tablescrub.redact.GdprAssessment g = t.gdpr();
+            int gn = 0;
+            Row gr = gs.createRow(gn++);
+            gr.createCell(0).setCellValue("status");
+            gr.createCell(1).setCellValue(g.status().label + ". " + g.summary());
+            for (String f : g.findings()) { Row r = gs.createRow(gn++); r.createCell(0).setCellValue("finding"); r.createCell(1).setCellValue(f); }
+            for (String c : g.checklist()) { Row r = gs.createRow(gn++); r.createCell(0).setCellValue("checklist"); r.createCell(1).setCellValue(c); }
+            Row disc = gs.createRow(gn);
+            disc.createCell(0).setCellValue("note");
+            disc.createCell(1).setCellValue(tablescrub.redact.GdprAssessment.DISCLAIMER);
+            gs.setColumnWidth(0, 12 * 256);
+            gs.setColumnWidth(1, 120 * 256);
 
             Sheet prov = wb.createSheet("provenance");
             int pn = 0;
@@ -266,6 +281,10 @@ final class Writers {
             w.write("<tr><td>" + esc(c.name()) + "</td><td>" + c.type().frictionless() + "</td><td>" + esc(c.description())
                     + "</td><td>" + esc(Documentation.treatment(c)) + "</td></tr>");
         w.write("</table>\n");
+        tablescrub.redact.GdprAssessment g = t.gdpr();
+        w.write("<h2>GDPR notes</h2><p><b>" + esc(g.status().label) + ".</b> " + esc(g.summary()) + "</p><ul>");
+        for (String f : g.findings()) w.write("<li>" + esc(f) + "</li>");
+        w.write("</ul><p><small>" + esc(tablescrub.redact.GdprAssessment.DISCLAIMER) + "</small></p>\n");
         if (!t.log().isEmpty()) {
             w.write("<h2>Redaction log</h2><ul>");
             for (String l : t.log()) w.write("<li>" + esc(l) + "</li>");
