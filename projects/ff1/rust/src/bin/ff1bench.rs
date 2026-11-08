@@ -72,13 +72,22 @@ fn main() {
 
     let (name, ct, e, d) = match a[1].as_str() {
         "ours" => {
-            let c = ff1::Ff1::new(&key, radix).unwrap();
+            let mut c = ff1::Ff1::new(&key, radix).unwrap();
             let ct = c.encrypt(&tweak, &pt).unwrap();
             assert_eq!(c.decrypt(&tweak, &ct).unwrap(), pt, "round trip failed");
-            let mut x = pt.clone();
-            let e = measure(|| x = black_box(c.encrypt(&tweak, &x).unwrap()));
-            let mut y = ct.clone();
-            let d = measure(|| y = black_box(c.decrypt(&tweak, &y).unwrap()));
+            // Allocation-free API, chained through two buffers (x -> y -> x ...).
+            let (mut x, mut y) = (pt.clone(), vec![0u16; n]);
+            let e = measure(|| {
+                c.encrypt_into(&tweak, &x, &mut y).unwrap();
+                std::mem::swap(&mut x, &mut y);
+                black_box(&x);
+            });
+            let (mut x, mut y) = (ct.clone(), vec![0u16; n]);
+            let d = measure(|| {
+                c.decrypt_into(&tweak, &x, &mut y).unwrap();
+                std::mem::swap(&mut x, &mut y);
+                black_box(&x);
+            });
             ("rust", digits(&ct), e, d)
         }
         "fpe" => {

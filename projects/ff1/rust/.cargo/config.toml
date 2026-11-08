@@ -1,0 +1,5 @@
+# Build for the host CPU: compiles AES-NI in statically instead of the aes
+# crate's runtime dispatch (measured ~17% faster FF1). The C port is built with
+# -march=native for the same reason. Remove for portable binaries.
+[build]
+rustflags = ["-C", "target-cpu=native"]

@@ -1,5 +1,5 @@
 CC ?= cc
-CFLAGS ?= -O2 -Wall -Wextra -std=c11 -D_POSIX_C_SOURCE=200809L
+CFLAGS ?= -O3 -march=native -Wall -Wextra -std=c11 -D_POSIX_C_SOURCE=200809L
 LDLIBS = -lcrypto
 
 all: ff1_test ff1bench
