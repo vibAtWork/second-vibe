@@ -5,7 +5,7 @@ multiplayer in the browser, with the same movement and controls. Two approaches,
 
 1. **`projects/ricochet-arena-server`**: Node authoritative server + client prediction.
    It's the most robust option: it works on any network and the server is neutral.
-   Try: `cd projects/ricochet-arena-server && npm install && npm start`, then open http://localhost:8080 in two tabs.
+   Try: `cd projects/ricochet-arena-server && npm start` (Node 26, no dependencies), then open http://localhost:8080 in two tabs.
 2. **`projects/ricochet-arena-p2p`**: serverless WebRTC. Guests audit the host, so cheating is detected.
    Try: `cd projects/ricochet-arena-p2p && npm install && npm start`, then open http://localhost:8081 in two tabs.
 

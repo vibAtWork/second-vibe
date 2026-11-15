@@ -5,7 +5,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { WebSocketServer } from 'ws';
+import { acceptUpgrades } from './ws.js';
 import { FRAME_MS } from './public/shared/sim.js';
 import { HostRoom } from './public/shared/room.js';
 
@@ -44,8 +44,10 @@ export function createServer({ port = 8080, log = console.log, anticheat = 'kick
   // room name -> HostRoom (the same authoritative room code the P2P host runs)
   const rooms = new Map();
 
-  const wss = new WebSocketServer({ server, maxPayload: 16 * 1024 });
-  wss.on('connection', (ws, req) => {
+  const sockets = new Set();
+  acceptUpgrades(server, (ws, req) => {
+    sockets.add(ws);
+    ws.on('close', () => sockets.delete(ws));
     const url = new URL(req.url, 'http://x');
     const roomName = (url.searchParams.get('room') || 'lobby').slice(0, 32).replace(/[^\w-]/g, '') || 'lobby';
     const ip = req.socket.remoteAddress;
@@ -91,7 +93,7 @@ export function createServer({ port = 8080, log = console.log, anticheat = 'kick
   return new Promise(resolve => {
     server.listen(port, () => {
       const actual = server.address().port;
-      resolve({ port: actual, rooms, close: () => { clearTimeout(timer); wss.close(); server.close(); for (const c of wss.clients) c.terminate(); } });
+      resolve({ port: actual, rooms, close: () => { clearTimeout(timer); server.close(); for (const c of sockets) c.terminate(); } });
     });
   });
 }

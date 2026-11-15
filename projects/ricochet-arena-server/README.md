@@ -12,13 +12,14 @@ server snapshots.
 
 ## Run it
 
+Needs Node 26 (the current LTS) and nothing else: the server has **no npm dependencies**.
+
 ```bash
 cd projects/ricochet-arena-server
-npm install
 npm start            # http://localhost:8080  (PORT=xxxx to change)
 ```
 
-Or with Docker (image published by `.github/workflows/docker-ricochet-arena.yml`, for amd64 and arm64):
+Or with Docker (image published by `.github/workflows/docker-ricochet-arena.yml`, for amd64 and arm64). The image is Alpine 3.24 plus just the Node 26 binary and the game files, about 53 MB to download:
 
 ```bash
 docker run -d --name ricochet-arena -p 8080:8080 --restart unless-stopped ghcr.io/vibatwork/ricochet-arena:latest
@@ -167,7 +168,8 @@ flagged rather than kicked. That's the price of not kicking skilled humans.
 | `public/game-client.js` | input, prediction, interpolation, events; transport-agnostic |
 | `public/render.js`, `public/audio.js` | drawing/effects and synthesized sounds |
 | `public/net-ws.js` | WebSocket transport (the P2P project adds `net-p2p.js`) |
-| `server.js` | HTTP + WebSocket plumbing around `room.js` |
+| `server.js` | HTTP plumbing around `room.js` |
+| `ws.js` | minimal built-in WebSocket server (RFC 6455): no dependencies |
 
 ## Tests
 

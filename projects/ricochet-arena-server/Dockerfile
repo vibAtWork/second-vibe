@@ -1,15 +1,17 @@
-# syntax=docker/dockerfile:1
-# Ricochet Arena (authoritative server). Build: docker build -t ricochet-arena .
-# Behind a TLS-intercepting proxy, add: --secret id=ca,src=/path/to/ca.crt
-FROM node:22-alpine
+# Ricochet Arena server. Build: docker build -t ricochet-arena .
+# The server has no npm dependencies, so the image is just Alpine + the node
+# binary (and the 3 C++ runtime libraries it links against) + the game files.
+# No npm/yarn, and no RUN steps, so multi-arch builds need no emulation.
+FROM node:26-alpine3.24 AS node
+
+FROM alpine:3.24
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/lib/libstdc++.so.6 /usr/lib/libgcc_s.so.1 /usr/lib/libatomic.so.1 /usr/lib/
 WORKDIR /app
-ENV NODE_ENV=production PORT=8080
-COPY package.json package-lock.json ./
-RUN --mount=type=secret,id=ca,required=false \
-    NODE_EXTRA_CA_CERTS=/run/secrets/ca npm ci --omit=dev && npm cache clean --force
-COPY server.js ./
+COPY server.js ws.js ./
 COPY public ./public
-USER node
+ENV NODE_ENV=production PORT=8080
+USER 65534:65534
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO /dev/null "http://127.0.0.1:${PORT}/" || exit 1
 CMD ["node", "server.js"]

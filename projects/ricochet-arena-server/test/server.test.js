@@ -1,20 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { WebSocket } from 'ws';
 import { createServer } from '../server.js';
 import { moveTank, FRAMES_FROZEN } from '../public/shared/sim.js';
 
 function client(port, room) {
   const ws = new WebSocket(`ws://localhost:${port}/ws?room=${room}`);
   const c = { ws, msgs: [], maze: null, snap: null, id: null };
-  ws.on('message', d => {
-    const m = JSON.parse(d);
+  ws.addEventListener('message', e => {
+    const m = JSON.parse(e.data);
     if (m.t === 'maze') c.maze = m.maze;
     if (m.t === 's') c.snap = m;
     if (m.t === 'joined') c.id = m.id;
     c.msgs.push(m);
   });
-  c.open = new Promise(r => ws.on('open', r));
+  c.open = new Promise(r => ws.addEventListener('open', r));
   c.send = m => ws.send(JSON.stringify(m));
   return c;
 }
@@ -39,13 +38,13 @@ test('two clients join a room, see each other, and server movement matches local
     const ack0 = a.snap.ack[a.id] || 0;
     // Send 10 frames of "forward + turn right", one per tick.
     const pred = { x: t0[1], y: t0[2], rot: t0[3] };
-    // Send each frame right after a server tick, so it is queued before the next one
-    // (timer-paced sends can arrive late, and the server then rightly repeats the last input).
-    for (let i = 1; i <= 10; i++) {
-      const tick = a.snap.tick;
-      await until(() => a.snap.tick > tick);
-      a.send({ t: 'in', id: a.id, f: [[ack0 + i, 1 | 8, 0, 0]] });
-      moveTank(a.maze, pred, { f: 1, r: 1 });
+    // Keep three frames queued ahead of the server, so a busy test process never
+    // lets the queue run dry (the server would then rightly repeat the last input).
+    const sendFrame = i => { a.send({ t: 'in', id: a.id, f: [[ack0 + i, 1 | 8, 0, 0]] }); moveTank(a.maze, pred, { f: 1, r: 1 }); };
+    for (let i = 1; i <= 3; i++) sendFrame(i);
+    for (let i = 4; i <= 10; i++) {
+      await until(() => (a.snap.ack[a.id] || 0) >= ack0 + i - 3);
+      sendFrame(i);
     }
     await until(() => (a.snap.ack[a.id] || 0) >= ack0 + 10);
     // Stop sending; server repeats last input until we send idle, so send idle now
@@ -111,7 +110,7 @@ test('admin reports need the token; a kicked cheater is banned from reconnecting
     assert.equal(r.bans.length, 1);
     await until(() => a.ws.readyState === 3, 3000); // server closes the kicked connection
     const again = new WebSocket(`ws://localhost:${srv.port}/ws?room=ban`);
-    const code = await new Promise(res => again.on('close', c => res(c)));
+    const code = await new Promise(res => again.addEventListener('close', e => res(e.code)));
     assert.equal(code, 4003);
   } finally { srv.close(); }
 });

@@ -3,3 +3,4 @@ test
 *.md
 Dockerfile
 .dockerignore
+package.json
