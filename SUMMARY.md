@@ -19,3 +19,5 @@ The Docker image `ghcr.io/vibatwork/ricochet-arena:latest` runs approach 1. Both
 
 3. **`projects/graveyard-shift`**: co-op survival shooter (up to 4 players) inspired by the second SWF.
    Try: `docker run -d -p 8080:8080 ghcr.io/vibatwork/graveyard-shift:latest`, or `cd projects/graveyard-shift && npm start`.
+   Rules come from the reverse-engineered SWF (see `RE-NOTES.md`). Co-op has four difficulties, and there's a deathmatch mode.
+   Checks: `npm test` (24 tests), `npm run e2e` (headless browsers), `npm run playtest` (bots in 6 scenarios, invariants checked every tick).
