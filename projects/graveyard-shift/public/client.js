@@ -42,6 +42,11 @@ export function startClient() {
   $('diff').value = ['beginner', 'intermediate', 'expert', 'nightmare'].includes(params.get('diff')) ? params.get('diff') : 'beginner';
   const newRoom = () => { const p = new URLSearchParams({ room: Math.random().toString(36).slice(2, 8), mode: $('mode').value, diff: $('diff').value }); location.search = '?' + p; };
   $('mode').onchange = newRoom; $('diff').onchange = newRoom;
+  const showMode = (mode, diff) => { // the header shows what the room actually plays
+    $('mode').value = mode; if (diff) $('diff').value = diff;
+    $('diff').disabled = mode === 'deathmatch';
+  };
+  showMode($('mode').value);
   try { $('name').value = localStorage.getItem('gs-name') || ''; } catch { /* private mode */ }
 
   // ---- input
@@ -100,6 +105,7 @@ export function startClient() {
 
   function onSnapshot(s) {
     const now = performance.now();
+    if (!latest || latest.mode !== s.mode || latest.difficulty !== s.difficulty) showMode(s.mode, s.difficulty);
     latest = s;
     snaps.push(s); if (snaps.length > 40) snaps.shift();
     offsets.push(now - s.tick * FRAME_MS); if (offsets.length > 60) offsets.shift();

@@ -95,7 +95,14 @@ export class Room {
       const newest = seat.queue.length ? seat.queue.at(-1).seq : seat.lastSeq;
       if (f && f.seq > newest) seat.queue.push(f);
     }
-    while (seat.queue.length > MAX_QUEUE) { const d = seat.queue.shift(); seat.last = d; seat.lastSeq = d.seq; }
+    // Too far ahead: drop the oldest frames (sending faster gains nothing), but keep their
+    // one-shot parts - a weapon switch or a fire tap - by moving them onto the next frame.
+    while (seat.queue.length > MAX_QUEUE) {
+      const d = seat.queue.shift(), next = seat.queue[0];
+      if (next.w < 0) next.w = d.w;
+      next.bits |= d.bits & 16;
+      seat.last = d; seat.lastSeq = d.seq;
+    }
   }
 
   mapMsg() { return { t: 'map', seed: this.game.map.seed, tiles: this.game.map.tiles, spawns: this.game.map.spawns }; }

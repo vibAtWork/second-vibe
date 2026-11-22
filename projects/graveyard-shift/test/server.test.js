@@ -44,6 +44,19 @@ test('room: one frame per tick, bounded queue, foreign seats rejected, starvatio
   assert.equal(a.seatIds.length, 2, 'at most two players per connection');
 });
 
+test('a weapon switch or fire tap in a dropped (overflowing) frame is not lost', () => {
+  const room = new Room({ seed: 1, now: () => 0 });
+  const c = { send: m => { if (m.t === 'joined') c.id = m.id; } }; room.addConn(c);
+  room.handle(c, { t: 'join', name: 'A' });
+  room.game.unlocked.add('uzi'); room.game.players.get(c.id).ammo[1] = 100;
+  room.handle(c, { t: 'in', id: c.id, f: [[1, 16, 1], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0]] });
+  const q = room.seats.get(c.id).queue;
+  assert.equal(q.length, MAX_QUEUE);
+  assert.equal(q[0].w, 1); assert.equal(q[0].bits & 16, 16);
+  room.tick();
+  assert.equal(room.game.players.get(c.id).weapon, 1);
+});
+
 test('two clients play together; server movement equals local prediction', async () => {
   const srv = await createServer({ port: 0, log: () => {} });
   try {

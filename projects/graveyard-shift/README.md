@@ -92,9 +92,13 @@ Health regenerates slowly (a full refill in 30 s), and health and ammo crates dr
 ## Tests
 
 ```bash
-npm test          # 20 tests: recovered tables and formulas, every weapon, upgrades, difficulties, deathmatch, room, server
+npm test          # 24 tests: recovered tables and formulas, every weapon, upgrades, difficulties, deathmatch, room, server
 npm run e2e       # headless Chromium players: co-op (prediction, building, switching) and a deathmatch frag
+npm run playtest  # bots play 6 scenarios (solo to 4p nightmare, deathmatch) for 30,000 ticks each, checking invariants every tick
 ```
+
+The playtest prints per-scenario stats: levels reached, kills, downs, frags, snapshot size and
+time per tick (about 0.015 ms on average, under 5 ms at worst, against a 20 ms budget).
 
 ## Limitations
 

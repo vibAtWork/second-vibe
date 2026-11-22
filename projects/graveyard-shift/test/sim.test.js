@@ -176,7 +176,9 @@ test('enemies on every map reach a stationary player', () => {
   for (let seed = 1; seed <= 6; seed++) {
     const g = new Game(seed); g.addPlayer(1, 'a', '#fff');
     const p = g.players.get(1);
-    for (let i = 0; i < 4500; i++) { step(g, { 1: idle }); p.hp = PLAYER_HP; p.alive = true; g.drainEvents(); }
+    p.shield = 1e9; // invulnerable, so the wave never resets
+    for (let i = 0; i < 4500; i++) { step(g, { 1: idle }); g.drainEvents(); }
+    assert.equal(g.level, 1);
     assert.ok(g.enemies.length > 0);
     assert.equal(g.enemies.filter(e => Math.hypot(e.x - p.x, e.y - p.y) > 60).length, 0, `seed ${seed}`);
   }
@@ -227,4 +229,33 @@ test('placing works wherever you stand within your tile (never on top of yoursel
     assert.ok(b, `placed at sub-tile offset ${off}`);
     assert.ok(Math.abs(b.x - p.x) >= 10 + TILE / 2, 'not overlapping the placer');
   }
+});
+
+test('co-op: players start and respawn on separate spots', () => {
+  const g = arena(4);
+  const spots = () => new Set([...g.players.values()].map(p => `${p.x},${p.y}`)).size;
+  assert.equal(spots(), 4, 'start spots differ');
+  for (const p of g.players.values()) p.alive = false;
+  g.phase = 'break'; g.phaseTimer = 1; step(g, {}, 1); // next level respawns the downed
+  assert.ok([...g.players.values()].every(p => p.alive));
+  assert.equal(spots(), 4, 'respawn spots differ');
+});
+
+test('deathmatch: no level escalation and no level banners', () => {
+  const g = arena(2, { mode: 'deathmatch' });
+  for (let k = 0; k < 5; k++) { g.toSpawn = { shambler: 0, hexer: 0 }; g.enemies = []; step(g, {}, 200); }
+  assert.equal(g.level, 1);
+  assert.ok(!g.drainEvents().some(e => e.type === 'level'));
+});
+
+test('deathmatch: once someone wins, nobody can be hurt or fragged', () => {
+  const g = arena(2, { mode: 'deathmatch' }), [a, b] = [g.players.get(1), g.players.get(2)];
+  a.frags = DM_FRAG_LIMIT - 1; b.shield = 0;
+  g.hurtPlayer(b, 999, 1);
+  assert.equal(g.phase, 'over');
+  step(g, {}, DM_RESPAWN_TICKS + 1); // b respawns during the 'over' phase
+  b.shield = 0; a.shield = 0;
+  g.hurtPlayer(b, 999, 1); g.hurtPlayer(a, 999, 2);
+  assert.equal(a.frags, DM_FRAG_LIMIT); assert.equal(b.frags, 0);
+  assert.equal(g.drainEvents().filter(e => e.type === 'winner').length, 1);
 });

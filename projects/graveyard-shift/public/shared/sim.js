@@ -257,7 +257,7 @@ export class Game {
     }
   }
 
-  spawnPoint() {
+  spawnPoint(p) {
     if (this.mode === 'deathmatch') { // a random open cell away from other players
       for (let k = 0; k < 50; k++) {
         const tx = 2 + Math.floor(this.rand() * (MAP_W - 4)), ty = 2 + Math.floor(this.rand() * (MAP_H - 4));
@@ -266,12 +266,13 @@ export class Game {
         if ([...this.players.values()].every(q => !q.alive || Math.hypot(q.x - x, q.y - y) > TILE * 6)) return [x, y];
       }
     }
-    const i = this.players.size;
+    // co-op: one of four spots around the centre, the player's own seat order picks which
+    const i = Math.max(0, [...this.players.values()].indexOf(p));
     return [WORLD_W / 2 + ((i % 2) ? 20 : -20), WORLD_H / 2 + ((i % 4) > 1 ? 20 : -20)];
   }
 
   respawn(p) {
-    const [x, y] = this.spawnPoint();
+    const [x, y] = this.spawnPoint(p);
     Object.assign(p, { x, y, fx: 0, fy: -1, hp: PLAYER_HP, alive: true, revive: 0, respawn: 0, shield: this.mode === 'deathmatch' ? DM_SPAWN_SHIELD : 0 });
   }
 
@@ -290,13 +291,15 @@ export class Game {
 
   // ------------------------------------------------ levels
   startLevel_() {
-    this.level = this.level ? this.level + 1 : this.startLevel;
+    const first = !this.level;
+    // deathmatch has no level progression: the zombies just keep coming at level-1 strength
+    this.level = first || this.mode === 'deathmatch' ? this.startLevel : this.level + 1;
     this.phase = 'level';
     this.spec = levelSpec(this.level);
     this.toSpawn = { shambler: this.spec.zombieTotal, hexer: this.spec.devilTotal };
     this.spawnTimer = { shambler: 0, hexer: this.spec.devilRate };
     if (this.mode === 'coop') for (const p of this.players.values()) if (!p.alive) { this.respawn(p); p.hp = PLAYER_HP / 2; }
-    this.events.push({ type: 'level', level: this.level });
+    if (this.mode === 'coop') this.events.push({ type: 'level', level: this.level });
   }
 
   spawnEnemy(kind) {
@@ -325,7 +328,7 @@ export class Game {
   }
 
   hurtPlayer(p, dmg, by = 0) {
-    if (!p.alive || p.shield > 0) return;
+    if (!p.alive || p.shield > 0 || this.phase === 'over') return; // nothing counts once the match is decided
     p.hp -= dmg;
     this.events.push({ type: 'hurt', id: p.id });
     if (p.hp > 0) return;
