@@ -43,6 +43,7 @@ jobs:
         with:
           context: projects/graveyard-shift
           platforms: linux/amd64,linux/arm64
+          pull: true   # always build on the newest Node 26 / Alpine 3.24 patch release
           push: true
           tags: |
             ${{ steps.img.outputs.name }}:latest
