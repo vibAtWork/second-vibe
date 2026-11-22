@@ -1,5 +1,5 @@
 // Graveyard Shift server: serves the browser client and runs one authoritative
-// Room per invite link at 30 ticks/s. No npm dependencies (see ws.js).
+// Room per invite link at 50 ticks/s (snapshots at 25 Hz). No npm dependencies (see ws.js).
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -31,10 +31,11 @@ export function createServer({ port = 8080, log = console.log } = {}) {
   acceptUpgrades(server, (ws, req) => {
     sockets.add(ws);
     ws.on('close', () => sockets.delete(ws));
-    const name = (new URL(req.url, 'http://x').searchParams.get('room') || 'lobby').slice(0, 32).replace(/[^\w-]/g, '') || 'lobby';
+    const q = new URL(req.url, 'http://x').searchParams;
+    const name = (q.get('room') || 'lobby').slice(0, 32).replace(/[^\w-]/g, '') || 'lobby';
     if (!rooms.has(name) && rooms.size >= MAX_ROOMS) return ws.close(1013, 'server full');
     let room = rooms.get(name);
-    if (!room) { room = new Room({ log: m => log(`[${name}] ${m}`) }); rooms.set(name, room); }
+    if (!room) { room = new Room({ mode: q.get('mode'), difficulty: q.get('diff'), log: m => log(`[${name}] ${m}`) }); rooms.set(name, room); } // the first visitor's link sets the room's mode
     const conn = { send: m => ws.send(JSON.stringify(m)), kick: () => ws.terminate() };
     room.addConn(conn);
     ws.on('message', raw => { let m; try { m = JSON.parse(raw); } catch { return; } room.handle(conn, m); });

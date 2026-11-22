@@ -13,5 +13,6 @@
 10. Lag simulator toggle in the client for testing netcode
 11. Gamepad support
 12. [done] Graveyard Shift: co-op survival shooter from the second supplied SWF (`projects/graveyard-shift`)
-13. Graveyard Shift: weapon upgrades (double ammo, fast fire, bigger blasts)
-14. Graveyard Shift: deathmatch mode
+13. [done] Graveyard Shift: weapon upgrades (recovered 58-step multiplier table)
+14. [done] Graveyard Shift: deathmatch mode + difficulties
+15. Graveyard Shift: bonus weapons from the original's code (Devastator, Smart Bomb, homing missiles)

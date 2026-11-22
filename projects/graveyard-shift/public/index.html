@@ -12,7 +12,7 @@
   header { width: 100%; max-width: 1180px; display: flex; gap: 10px; align-items: center; padding: 10px 16px; flex-wrap: wrap; }
   h1 { font-size: 20px; margin: 0 12px 0 0; letter-spacing: .5px; }
   h1 span { color: var(--accent); }
-  input, button { font: inherit; border-radius: 6px; border: 1px solid #3a414d; background: var(--panel); color: var(--fg); padding: 6px 10px; }
+  select, input, button { font: inherit; border-radius: 6px; border: 1px solid #3a414d; background: var(--panel); color: var(--fg); padding: 6px 10px; }
   button { cursor: pointer; }
   button.primary { background: var(--accent); color: #102000; border-color: var(--accent); font-weight: 600; }
   button:disabled { opacity: .45; cursor: default; }
@@ -27,6 +27,8 @@
 <header>
   <h1>Graveyard <span>Shift</span></h1>
   <input id="name" maxlength="16" placeholder="Your name" size="12">
+  <select id="mode" title="Game mode"><option value="coop">Co-op survival</option><option value="deathmatch">Deathmatch</option></select>
+  <select id="diff" title="Difficulty (co-op)"><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="expert">Expert</option><option value="nightmare">Nightmare</option></select>
   <button id="join" class="primary">Join (Arrows + Space)</button>
   <button id="join2" title="Second player on this keyboard">+ Local player (WASD + F)</button>
   <button id="copy">Copy invite link</button>
@@ -36,8 +38,8 @@
 <div id="help">
   Player 1: <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> move · <kbd>Space</kbd> shoot · <kbd>1</kbd>–<kbd>0</kbd> or <kbd>Z</kbd>/<kbd>X</kbd> switch weapon ·
   Player 2: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>F</kbd> shoot · <kbd>R</kbd>/<kbd>T</kbd> switch weapon.
-  Score to unlock new weapons, chain kills for a multiplier, stand next to a downed friend to revive them.
-  Send the invite link: everyone in the same room plays together (up to 4).
+  Co-op: every kill raises the team multiplier, which unlocks weapons and upgrades; it drains if you stop killing. Stand next to a downed friend to revive them.
+  Deathmatch: everything unlocked, first to 10 frags. Grenades throw when you release the key. Changing mode or difficulty makes a new room; send its invite link (up to 4 players).
 </div>
 <script type="module">
   import { startClient } from './client.js';

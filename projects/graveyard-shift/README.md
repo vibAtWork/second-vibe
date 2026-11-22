@@ -1,15 +1,17 @@
 # Graveyard Shift
 
 A browser-based, online co-op survival shooter for up to 4 players. Hold the graveyard
-against endless waves of **shamblers** (melee) and **hexers** (they keep their distance and
-throw fireballs). Score kills to unlock new weapons, chain kills for a multiplier, and revive
-downed friends.
+through ever harder levels of **shamblers** (melee) and **hexers** (they keep their distance
+and throw fireballs). Every kill feeds a shared multiplier that unlocks weapons and upgrades.
+There's also a deathmatch mode.
 
-It's an original game in the top-down co-op survival-shooter genre, inspired by the
-mechanics of the Flash game the owner supplied: its weapon line-up on keys 1–0 unlocked by
-scoring, placeable barrels/walls/mines, kill multipliers and two players on one keyboard.
-The supplied file's game code is obfuscated, so all numbers, art, sounds and maps here are
-my own.
+It's an original game in the top-down co-op survival-shooter genre. Its **rules and numbers
+were reverse-engineered from the Flash game the owner supplied** (an obfuscated AS2 SWF;
+method, tools and every recovered table are in [RE-NOTES.md](RE-NOTES.md)). That covers the
+50 fps timing, weapon stats, the upgrade effects, the 58-step multiplier unlock table, the
+multiplier drain formula, the per-level spawn formulas, difficulty start points, creature
+stats, health regeneration and the deathmatch rules. The name, art, sounds and generated
+maps are original.
 
 ## Run it
 
@@ -38,30 +40,45 @@ the same link plays in the same room.
 
 You shoot the way you're walking. Stand next to a downed teammate for 2 seconds to revive them.
 
-## Weapons (unlocked by score)
+## Modes
 
-| Key | Weapon | Unlock | Notes |
+* **Co-op survival** (default): levels of shamblers, with hexers from level 5. Every kill adds
+  +1 to the **team multiplier**, which drains one step at a time if you stop killing (3 s at
+  ×1, a fraction of a second at ×50+). Reaching a multiplier unlocks the next step of a
+  58-step table for the whole team: new weapons at ×5, 10, 15, 20, 30, 40, 50, 55 and 70, and
+  "+" upgrades in between (Fast/Rapid Fire, Double/Quad Damage and Ammo, Long Shot, Wide
+  Shot, Big Bang, Cluster Explode, Infinite Range). Points = creature score × multiplier.
+  Revive downed friends; if everyone's down, the game restarts.
+* **Difficulty** (co-op): Beginner (level 1, ×1), Intermediate (level 10, ×10), Expert
+  (level 20, ×30), Nightmare (level 35, ×50).
+* **Deathmatch**: multiplier 200, so everything is unlocked. Players hurt each other (mines
+  too), frags count, you respawn after 3 s with a short shield, first to 10 frags wins.
+  Zombies still roam.
+
+Pick the mode and difficulty in the header. That creates a room with them in its invite
+link, so friends who open the link join that mode.
+
+## Weapons
+
+| Key | Weapon | Unlocked at | Notes |
 |---|---|---|---|
-| 1 | Pistol | start | unlimited ammo |
-| 2 | SMG | 500 | fast, slight spread |
-| 3 | Shotgun | 1,500 | 7 pellets, short range |
-| 4 | Barrel | 3,000 | placed in front of you; blocks enemies; explodes when shot, chains with other barrels |
-| 5 | Grenade | 5,000 | thrown, explodes after 1.2 s |
-| 6 | Barricade | 7,500 | blocks the path; enemies have to smash through |
-| 7 | Mine | 10,000 | explodes when an enemy steps on it |
-| 8 | Rocket | 14,000 | explodes on impact |
-| 9 | Charge | 19,000 | place up to 3, press again to detonate them all |
-| 0 | Railgun | 25,000 | pierces every enemy in a line |
+| 1 | Pistol | start | semi-automatic until Fast Fire |
+| 2 | SMG | ×5 | automatic |
+| 3 | Shotgun | ×10 | spread grows with Wide/Wider Shot |
+| 4 | Barrel | ×15 | placed in front of you; explodes when shot, chains |
+| 5 | Grenade | ×20 | hold to wind up, **release to throw** |
+| 6 | Barricade | ×30 | 1000 hp wall; enemies smash through |
+| 7 | Mine | ×40 | triggered by enemies (and rivals in deathmatch) |
+| 8 | Rocket | ×50 | explodes on impact |
+| 9 | Charge | ×55 | place up to 3, press again to detonate |
+| 0 | Railgun | ×70 | pierces everything in a line |
 
-Kills give 10 (shambler) or 30 (hexer) points × your multiplier. Every kill within 2 s of the
-previous one raises the multiplier, up to ×10. Enemies drop health packs and ammo crates.
-Explosions hurt players too, at 30%. Each wave is bigger and a little faster. If everyone is
-down, the graveyard is overrun and the game restarts from wave 1.
+Health regenerates slowly (a full refill in 30 s), and health and ammo crates drop from kills.
 
 ## How it works
 
 * `server.js` plus `ws.js` (a minimal built-in WebSocket server) run one authoritative
-  `Room` per invite link at 30 ticks/s.
+  `Room` per invite link at 50 ticks/s, the original's frame rate, and send 25 updates/s.
 * `public/shared/sim.js` holds the whole game. The browser uses its `movePlayer()` (plain
   arithmetic) to predict your own movement, so controls react instantly and match the
   server exactly. Everything else is drawn 80 ms in the past and blended between server
@@ -75,13 +92,16 @@ down, the graveyard is overrun and the game restarts from wave 1.
 ## Tests
 
 ```bash
-npm test          # 17 tests: maps, movement, every weapon, enemies, waves, revive, scoring, room, server
-npm run e2e       # two headless Chromium players against a real server (needs Playwright)
+npm test          # 20 tests: recovered tables and formulas, every weapon, upgrades, difficulties, deathmatch, room, server
+npm run e2e       # headless Chromium players: co-op (prediction, building, switching) and a deathmatch frag
 ```
 
 ## Limitations
 
-* One arena size (30 × 20 tiles), procedurally generated per game; no camera scrolling.
-* No deathmatch mode and no weapon upgrades ("double ammo" and the like) yet.
-* Enemies path toward the nearest player with a grid flow field; they don't plan around
-  barricades, they smash through them.
+* One arena size (30 × 20 tiles), generated per game, no camera scrolling. The original's
+  hand-made rooms are not reproduced.
+* A few timings weren't isolated in the original's code and are my choices: zombie and
+  hexer attack cadence, explosion radius, cluster bomblets and shotgun pellet counts.
+  See RE-NOTES.md.
+* Bonus weapons present in the original's code but not in its unlock table (Devastator,
+  Smart Bomb, homing missiles) aren't included.

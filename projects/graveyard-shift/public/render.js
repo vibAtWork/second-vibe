@@ -65,6 +65,7 @@ export function createRenderer(canvas) {
     const a = Math.atan2(p.fy, p.fx);
     ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
     if (!p.alive) ctx.globalAlpha = 0.45;
+    if (p.shield) ctx.globalAlpha = 0.6 + 0.4 * Math.sin(performance.now() / 60);
     ctx.fillStyle = '#111'; ctx.fillRect(8, -2, 12, 4);                 // gun
     ctx.fillStyle = p.color; ctx.beginPath(); ctx.ellipse(0, 0, 9, 12, 0, 0, TAU); ctx.fill(); // shoulders
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(-3, 0, 4, 9, 0, 0, TAU); ctx.fill(); // backpack
@@ -148,11 +149,16 @@ export function createRenderer(canvas) {
       ctx.fillStyle = '#ddd'; ctx.font = '12px system-ui';
       ctx.fillText(`${w.key} ${w.name}${ammo >= 0 ? ` · ${ammo}` : ''}`, x, y0 + 48);
       ctx.textAlign = 'right'; ctx.font = '700 15px system-ui'; ctx.fillStyle = '#fff';
-      ctx.fillText(String(p.score), x + slot - 22, y0 + 20);
-      if (p.mult > 1) { ctx.fillStyle = '#ffca28'; ctx.font = '700 13px system-ui'; ctx.fillText(`x${p.mult}`, x + slot - 22, y0 + 38); }
+      ctx.fillText(v.mode === 'deathmatch' ? `${p.frags} frags` : String(p.score), x + slot - 22, y0 + 20);
     });
     ctx.textAlign = 'right'; ctx.fillStyle = '#9aa'; ctx.font = '11px system-ui';
-    ctx.fillText(`wave ${v.wave} · ${v.left} left · ping ${Math.round(v.rtt)} ms`, VIEW_W - 8, VIEW_H - 8);
+    ctx.fillText(v.mode === 'deathmatch' ? `deathmatch · first to 10 · ping ${Math.round(v.rtt)} ms` : `level ${v.level} · ${v.left} left · ping ${Math.round(v.rtt)} ms`, VIEW_W - 8, VIEW_H - 8);
+    if (v.mode !== 'deathmatch') { // team multiplier (draining bar) and the next unlock it leads to
+      ctx.fillStyle = '#ffca28'; ctx.font = '700 20px system-ui'; ctx.fillText(`x${v.mult}`, VIEW_W - 8, y0 + 22);
+      const bw = 150, bx = VIEW_W - 60 - bw;
+      ctx.fillStyle = '#333'; ctx.fillRect(bx, y0 + 13, bw, 6); ctx.fillStyle = '#ffca28'; ctx.fillRect(bx, y0 + 13, bw * v.multRatio, 6);
+      if (v.nextUnlock) { ctx.fillStyle = '#bbb'; ctx.font = '11px system-ui'; ctx.fillText(`next at x${v.nextUnlock[0]}: ${v.nextUnlock[1]}`, VIEW_W - 8, y0 + 40, 320); }
+    }
   }
 
   function centre(text, y, font, color) {
@@ -197,8 +203,9 @@ export function createRenderer(canvas) {
       ctx.fillText(s.s, s.x, s.y - (60 - s.life) * 0.4); ctx.globalAlpha = 1;
     }
     ctx.restore();
-    if (v.phase === 'break' && v.timer > 0) centre(v.wave === 0 ? 'Get ready…' : `Wave ${v.wave} cleared - next wave in ${Math.ceil(v.timer / 30)}`, WORLD_H / 2 - 60, '700 26px system-ui', '#cfe8ff');
-    if (v.phase === 'over') centre(`Overrun on wave ${v.wave} - restarting…`, WORLD_H / 2 - 60, '700 28px system-ui', '#ff8a80');
+    if (v.phase === 'break' && v.timer > 0 && v.mode !== 'deathmatch') centre(v.level === 0 ? 'Get ready…' : `Level ${v.level} cleared - next level in ${Math.ceil(v.timer / 50)}`, WORLD_H / 2 - 60, '700 26px system-ui', '#cfe8ff');
+    if (v.phase === 'over') centre(v.mode === 'deathmatch' ? `${v.nameOf(v.winner)} wins! New match soon…` : `Overrun on level ${v.level} - restarting…`, WORLD_H / 2 - 60, '700 28px system-ui', '#ff8a80');
+    for (const p of v.players) if (!p.alive && v.mode === 'deathmatch' && v.mine.has(p.id)) centre(`Respawning in ${Math.ceil(p.respawn / 50)}…`, WORLD_H / 2, '700 22px system-ui', '#fff');
     if (v.banner && t < v.banner.until) centre(v.banner.text, 90, '700 24px system-ui', v.banner.color);
     if (v.spectating) centre('Press Join to play', WORLD_H - 24, '600 16px system-ui', '#ddd');
     drawHud(v);

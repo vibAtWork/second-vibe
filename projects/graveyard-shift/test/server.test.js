@@ -55,14 +55,14 @@ test('two clients play together; server movement equals local prediction', async
     const row = a.snap.players.find(p => p[0] === a.id);
     const ack0 = a.snap.ack[a.id] || 0;
     const pred = { x: row[1], y: row[2], fx: row[3], fy: row[4] };
-    const moves = [8, 8, 8, 1, 1, 9, 9, 2, 6, 6];
+    const moves = [8, 8, 8, 1, 1, 9, 9, 2, 6, 6, 0, 0, 0, 0]; // end with idle frames so the server stops too
     const sendFrame = i => { a.send({ t: 'in', id: a.id, f: [[ack0 + i, moves[i - 1], -1]] }); movePlayer(a.map, [], pred, moves[i - 1]); };
     for (let i = 1; i <= 3; i++) sendFrame(i); // stay a few frames ahead so the queue never runs dry
-    for (let i = 4; i <= 10; i++) { await until(() => (a.snap.ack[a.id] || 0) >= ack0 + i - 3); sendFrame(i); }
-    await until(() => (a.snap.ack[a.id] || 0) >= ack0 + 10);
-    const at = a.msgs.find(m => m.t === 's' && m.ack[a.id] === ack0 + 10).players.find(p => p[0] === a.id);
+    for (let i = 4; i <= moves.length; i++) { await until(() => (a.snap.ack[a.id] || 0) >= ack0 + i - 3); sendFrame(i); }
+    await until(() => (a.snap.ack[a.id] || 0) >= ack0 + moves.length);
+    const at = a.snap.players.find(p => p[0] === a.id);
     assert.deepEqual([at[1], at[2]], [pred.x, pred.y], 'exact match');
-    assert.ok(b.snap.players.some(p => p[0] === a.id && p[13] === 'Ann'));
+    assert.ok(b.snap.players.some(p => p[0] === a.id && p[12] === 'Ann'));
   } finally { srv.close(); }
 });
 

@@ -3,13 +3,13 @@
 // Every message is validated, one input frame is applied per tick (sending
 // faster gains nothing), connections are rate-limited, and a seat whose inputs
 // stop arriving goes idle after STARVE_TICKS instead of repeating its last input.
-import { Game, WEAPONS } from './sim.js';
+import { Game, WEAPONS, SNAPSHOT_EVERY } from './sim.js';
 
 const COLORS = ['#4fc3f7', '#ffb74d', '#aed581', '#f06292'];
 export const MAX_PLAYERS = 4;
 export const MAX_SEATS_PER_CONN = 2;   // a second player on the same keyboard
 export const MAX_QUEUE = 4;
-export const STARVE_TICKS = 45;        // 1.5 s without input -> idle
+export const STARVE_TICKS = 75;        // 1.5 s without input -> idle
 const RATE = { capacity: 150, perSec: 120, kickAfterDrops: 600 };
 const IDLE = { bits: 0, w: -1 };
 
@@ -26,8 +26,9 @@ export const cleanName = name => [...String(name ?? '')]
   .join('').trim().slice(0, 16) || 'Player';
 
 export class Room {
-  constructor({ seed, log = () => {}, now = () => performance.now() } = {}) {
-    this.game = new Game(seed);
+  // mode: 'coop' | 'deathmatch'; difficulty: 'beginner' | 'intermediate' | 'expert' | 'nightmare'
+  constructor({ seed, mode, difficulty, log = () => {}, now = () => performance.now() } = {}) {
+    this.game = new Game(seed, { mode, difficulty });
     this.log = log;
     this.now = now;
     this.seats = new Map(); // id -> { id, conn, queue, last, lastSeq, starved }
@@ -110,8 +111,10 @@ export class Room {
     const mapSeed = g.map.seed;
     g.step(inputs);
     if (g.map.seed !== mapSeed) for (const c of this.conns) c.send(this.mapMsg());
+    this.events = (this.events || []).concat(g.drainEvents());
+    if (g.tick % SNAPSHOT_EVERY) return; // simulate at 50 Hz, send at 25 Hz
     const snap = g.snapshot();
-    snap.ev = g.drainEvents();
+    snap.ev = this.events; this.events = [];
     for (const c of this.conns) {
       const ack = {};
       for (const id of c.seatIds) ack[id] = this.seats.get(id)?.lastSeq ?? 0;

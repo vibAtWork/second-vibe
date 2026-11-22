@@ -1,214 +1,230 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  Game, generateMap, flowField, movePlayer, blocked, WEAPONS, ENEMIES, TILE, MAP_W, MAP_H, PLAYER_SPEED, DIAG,
-  REVIVE_TICKS, COMBO_TICKS, MAX_CHARGES, PLAYER_HP,
+  Game, generateMap, flowField, movePlayer, blocked, weaponStats, multiplierTicks, levelSpec,
+  WEAPONS, ENEMIES, UNLOCKS, DIFFICULTY, TILE, MAP_W, MAP_H, PLAYER_SPEED, DIAG, PLAYER_HP, REGEN_PER_TICK,
+  REVIVE_TICKS, MAX_CHARGES, DM_FRAG_LIMIT, DM_RESPAWN_TICKS, DM_SPAWN_SHIELD, BARRICADE_HP,
 } from '../public/shared/sim.js';
 
 const step = (g, inputs = {}, n = 1) => { for (let i = 0; i < n; i++) g.step(new Map(Object.entries(inputs).map(([k, v]) => [+k, v]))); };
-const idle = { bits: 0, w: -1 };
-// A game in the fighting phase with one player standing in the clear centre.
-function arena(players = 1) {
-  const g = new Game(5);
+const idle = { bits: 0, w: -1 }, fire = { bits: 16, w: -1 };
+function arena(players = 1, opts = {}) {
+  const g = new Game(5, opts);
   for (let i = 1; i <= players; i++) g.addPlayer(i, 'p' + i, '#fff');
-  g.phase = 'wave'; g.toSpawn = []; g.drainEvents();
+  step(g, Object.fromEntries([...g.players.keys()].map(k => [k, idle])), 101); // into level 1
+  g.toSpawn = { shambler: 0, hexer: 0 }; g.enemies = []; g.drainEvents();
   return g;
 }
 const enemy = (g, x, y, kind = 'shambler', hp = ENEMIES[kind].hp) => { const e = { id: g.nextId++, kind, x, y, hp, maxHp: hp, speed: 0, cd: 999 }; g.enemies.push(e); return e; };
+const killNow = (g, n) => { for (let i = 0; i < n; i++) g.kill({ id: -1, kind: 'shambler', x: 0, y: 0 }, 1); };
+
+test('recovered unlock table: 58 steps, increasing thresholds, every weapon unlocked once in key order', () => {
+  assert.equal(UNLOCKS.length, 58);
+  for (let i = 1; i < UNLOCKS.length; i++) assert.ok(UNLOCKS[i][0] > UNLOCKS[i - 1][0]);
+  const weapons = UNLOCKS.filter(u => !u[2]).map(u => u[1]);
+  assert.deepEqual(weapons, ['uzi', 'shotgun', 'barrel', 'grenade', 'fakewall', 'mine', 'rocket', 'chargepack', 'railgun']);
+  assert.deepEqual(UNLOCKS.filter(u => !u[2]).map(u => u[0]), [5, 10, 15, 20, 30, 40, 50, 55, 70]);
+  assert.deepEqual(UNLOCKS.at(-1), [125, 'railgun', 'LongShot']);
+});
+
+test('recovered multiplier timing: 3 s at x1, 3 frames at x100', () => {
+  assert.equal(multiplierTicks(1), 150);
+  assert.ok(Math.abs(multiplierTicks(100) - 3) < 0.01, 'about 3 frames');
+  assert.ok(multiplierTicks(50) > 25 && multiplierTicks(50) < 35);
+});
+
+test('recovered weapon upgrade factors', () => {
+  const pistol = WEAPONS[0];
+  assert.deepEqual([pistol.fireRate, pistol.damage, pistol.range, pistol.auto], [8, 26, 8, false]);
+  const fast = weaponStats(pistol, { FastFire: true, DoubleDamage: true });
+  assert.deepEqual([fast.fireRate, fast.auto, fast.damage], [4, true, 52]);
+  const uzi = weaponStats(WEAPONS[1], { RapidFire: true, QuadAmmo: true, QuadDamage: true, LongShot: true });
+  assert.deepEqual([uzi.fireRate, uzi.ammo, uzi.damage, uzi.range], [2, 400, 140, 12]);
+  assert.equal(weaponStats(WEAPONS[1], { InfiniteRange: true }).range, 100);
+  assert.equal(weaponStats(WEAPONS[2], { WiderShot: true }).wide, 2);
+  assert.equal(weaponStats(WEAPONS[3], { BiggerBang: true }).bang, 2);
+});
+
+test('recovered level table', () => {
+  assert.deepEqual(levelSpec(1), { zombieRate: 50, zombieMax: 10, zombieTotal: 10, speedUp: 1.1, devilRate: 500, devilMax: 0, devilTotal: 0 });
+  assert.equal(levelSpec(11).zombieMax, 60);
+  assert.equal(levelSpec(40).speedUp, 5);
+  assert.ok(levelSpec(5).devilTotal >= 1, 'devils from level 5');
+});
 
 test('maps: closed border, open gates, clear centre, every gate reachable', () => {
   for (let seed = 1; seed < 40; seed++) {
     const m = generateMap(seed);
-    assert.equal(m.tiles.length, MAP_H); assert.equal(m.tiles[0].length, MAP_W);
-    assert.equal(m.tiles[MAP_H / 2][MAP_W / 2], 0);
     const d = flowField(m.tiles, [[MAP_W / 2, MAP_H / 2]]);
-    for (const [x, y] of m.spawns) assert.ok(d[Math.floor(y / TILE)][Math.floor(x / TILE)] >= 0, `seed ${seed}: spawn unreachable`);
-    assert.equal(m.tiles[5][0], 1, 'border closed away from gates');
+    for (const [x, y] of m.spawns) assert.ok(d[Math.floor(y / TILE)][Math.floor(x / TILE)] >= 0, `seed ${seed}`);
+    assert.equal(m.tiles[5][0], 1);
   }
 });
 
-test('movement: speed, diagonal normalisation, walls stop you, facing follows movement', () => {
-  const m = generateMap(2), objs = [];
-  const p = { x: MAP_W / 2 * TILE, y: MAP_H / 2 * TILE, fx: 0, fy: -1 };
-  movePlayer(m, objs, p, 8);
+test('movement: recovered speed, diagonals, walls', () => {
+  const m = generateMap(2), p = { x: MAP_W / 2 * TILE, y: MAP_H / 2 * TILE, fx: 0, fy: -1 };
+  movePlayer(m, [], p, 8);
   assert.equal(p.x, MAP_W / 2 * TILE + PLAYER_SPEED);
-  assert.deepEqual([p.fx, p.fy], [1, 0]);
   const q = { ...p };
-  movePlayer(m, objs, q, 2 | 4);
-  assert.ok(Math.abs(q.x - (p.x - PLAYER_SPEED * DIAG)) < 1e-9 && Math.abs(q.y - (p.y + PLAYER_SPEED * DIAG)) < 1e-9);
-  for (let i = 0; i < 400; i++) movePlayer(m, objs, q, 1);
-  assert.ok(!blocked(m, objs, q.x, q.y, 10), 'never inside a wall');
-  assert.ok(q.y >= 10, 'stopped at the map edge (the top gate is open, the world ends there)');
+  movePlayer(m, [], q, 2 | 4);
+  assert.ok(Math.abs(q.x - (p.x - PLAYER_SPEED * DIAG)) < 1e-9);
+  for (let i = 0; i < 600; i++) movePlayer(m, [], q, 1);
+  assert.ok(!blocked(m, [], q.x, q.y, 10) && q.y >= 10);
 });
 
-test('enemies on every map find a stationary player (no one stuck at a gate)', () => {
-  for (let seed = 1; seed <= 8; seed++) {
+test('every kill raises the team multiplier, which unlocks weapons for everyone; it drains when idle', () => {
+  const g = arena(2), [a, b] = [g.players.get(1), g.players.get(2)];
+  killNow(g, 4);
+  assert.equal(g.mult, 5);
+  assert.ok(g.unlocked.has('uzi'));
+  assert.equal(a.ammo[1], WEAPONS[1].ammo); assert.equal(b.ammo[1], WEAPONS[1].ammo, 'team-wide');
+  assert.ok(g.ups.pistol.FastFire, 'x3 unlocked Pistol+: Fast Fire');
+  assert.ok(g.drainEvents().some(e => e.type === 'unlock' && /SMG \(key 2\)/.test(e.text)));
+  step(g, { 1: idle, 2: idle }, Math.ceil(multiplierTicks(5)) + 2);
+  assert.equal(g.mult, 4, 'drops one step when the timer runs out');
+  assert.ok(g.unlocked.has('uzi'), 'unlocks are kept');
+  const before = a.score;
+  g.kill({ id: -1, kind: 'hexer', x: 0, y: 0 }, 1);
+  assert.equal(a.score - before, ENEMIES.hexer.score * g.mult, 'score = creature score x multiplier');
+});
+
+test('pistol is semi-automatic until Fast Fire; grenades throw on release', () => {
+  const g = arena(), p = g.players.get(1);
+  g.unlockIndex = UNLOCKS.length; // freeze upgrades for this test
+  step(g, { 1: fire }); const shots1 = g.drainEvents().filter(e => e.type === 'shot').length;
+  step(g, { 1: fire }, 30); const held = g.drainEvents().filter(e => e.type === 'shot').length;
+  assert.equal(shots1, 1); assert.equal(held, 0, 'holding fire does not repeat');
+  g.ups.pistol = { FastFire: true };
+  step(g, { 1: fire }, 30);
+  assert.ok(g.drainEvents().filter(e => e.type === 'shot').length >= 6, 'auto with Fast Fire');
+  g.unlocked.add('grenade'); p.ammo[4] = 5;
+  step(g, { 1: { bits: 0, w: 4 } }); g.drainEvents();
+  step(g, { 1: fire }, 20);
+  assert.equal(g.shots.length, 0, 'nothing thrown while held');
+  step(g, { 1: idle });
+  assert.equal(g.shots.filter(s => s.kind === 'grenade').length, 1, 'thrown on release');
+  step(g, { 1: idle }, 61);
+  assert.ok(g.drainEvents().some(e => e.type === 'boom'));
+});
+
+test('recovered creature stats: shambler hits for 50, hexer has 1000 hp and casts within 5 cells; health regenerates', () => {
+  const g = arena(), p = g.players.get(1);
+  const s = enemy(g, p.x + 20, p.y); s.cd = 0;
+  step(g, { 1: idle });
+  assert.ok(Math.abs(p.hp - (PLAYER_HP - 50 + REGEN_PER_TICK)) < 1e-9 || Math.abs(p.hp - (PLAYER_HP - 50)) < 1e-9);
+  g.enemies = [];
+  const before = p.hp;
+  step(g, { 1: idle }, 50);
+  assert.ok(p.hp > before, 'regenerating');
+  const h = enemy(g, p.x + 4 * TILE, p.y, 'hexer'); h.cd = 0;
+  assert.equal(h.hp, 1000);
+  step(g, { 1: idle });
+  assert.equal(g.shots.filter(x => x.kind === 'fireball').length, 1);
+});
+
+test('difficulty sets the starting level and multiplier (recovered table)', () => {
+  for (const [name, [level, mult]] of Object.entries(DIFFICULTY)) {
+    const g = new Game(1, { difficulty: name }); g.addPlayer(1, 'a', '#fff');
+    assert.equal(g.mult, mult);
+    step(g, { 1: idle }, 101);
+    assert.equal(g.level, level);
+    assert.equal(g.unlocked.size, 1 + UNLOCKS.filter(u => !u[2] && u[0] <= mult).length);
+  }
+});
+
+test('barrels chain, barricades soak damage, charges detonate on the 4th press, railgun pierces', () => {
+  const g = arena(), p = g.players.get(1);
+  p.fx = 1; p.fy = 0;
+  for (const w of ['barrel', 'fakewall', 'chargepack', 'railgun']) g.unlocked.add(w);
+  p.ammo = WEAPONS.map(w => (Number.isFinite(w.ammo) ? w.ammo : Infinity));
+  p.weapon = 3; step(g, { 1: fire }); step(g, { 1: idle });
+  const b1 = g.objects.find(o => o.kind === 'barrel');
+  assert.ok(b1 && blocked(g.map, g.objects, b1.x, b1.y, 10));
+  g.objects.push({ id: g.nextId++, kind: 'barrel', x: b1.x + TILE * 2, y: b1.y, hp: 1, owner: 1, dmg: 150, bang: 0 });
+  const victim = enemy(g, b1.x + TILE * 2 + 20, b1.y, 'shambler', 140);
+  p.weapon = 0; p.cd = 0; step(g, { 1: fire }); step(g, { 1: idle }, 2);
+  assert.equal(g.objects.filter(o => o.kind === 'barrel').length, 0, 'chain reaction');
+  assert.equal(g.enemies.includes(victim), false);
+  p.weapon = 5; p.cd = 0; step(g, { 1: fire }); step(g, { 1: idle });
+  assert.equal(g.objects.find(o => o.kind === 'barricade').hp, BARRICADE_HP);
+  g.objects = [];
+  p.weapon = 8;
+  for (let i = 0; i <= MAX_CHARGES; i++) { p.cd = 0; step(g, { 1: fire }); step(g, { 1: idle }); p.y += TILE * 2; }
+  step(g, { 1: idle }, 2);
+  assert.equal(g.objects.filter(o => o.kind === 'charge').length, 0);
+  p.y -= TILE * 8;
+  const line = [60, 90, 120].map(d => enemy(g, p.x + d, p.y, 'shambler', 100));
+  p.weapon = 9; p.cd = 0; p.fx = 1; p.fy = 0; step(g, { 1: fire });
+  for (const e of line) assert.equal(g.enemies.includes(e), false);
+});
+
+test('co-op: revive a downed teammate; everyone down -> game over -> restart', () => {
+  const g = arena(2), [a, b] = [g.players.get(1), g.players.get(2)];
+  g.hurtPlayer(a, 999);
+  b.x = a.x + 10; b.y = a.y;
+  step(g, { 1: idle, 2: idle }, REVIVE_TICKS);
+  assert.equal(a.alive, true);
+  killNow(g, 30);
+  g.hurtPlayer(a, 999); g.hurtPlayer(b, 999);
+  step(g, { 1: idle, 2: idle });
+  assert.equal(g.phase, 'over');
+  step(g, { 1: idle, 2: idle }, 260);
+  assert.equal(g.mult, 1); assert.equal(g.unlocked.size, 1); assert.ok(a.alive && b.alive);
+});
+
+test('enemies on every map reach a stationary player', () => {
+  for (let seed = 1; seed <= 6; seed++) {
     const g = new Game(seed); g.addPlayer(1, 'a', '#fff');
     const p = g.players.get(1);
-    for (let i = 0; i < 2400; i++) { step(g, { 1: idle }); p.hp = PLAYER_HP; p.alive = true; g.drainEvents(); }
+    for (let i = 0; i < 4500; i++) { step(g, { 1: idle }); p.hp = PLAYER_HP; p.alive = true; g.drainEvents(); }
     assert.ok(g.enemies.length > 0);
     assert.equal(g.enemies.filter(e => Math.hypot(e.x - p.x, e.y - p.y) > 60).length, 0, `seed ${seed}`);
   }
 });
 
-test('pistol hits the first enemy in line; kills score with a growing multiplier', () => {
-  const g = arena(), p = g.players.get(1);
-  p.fx = 1; p.fy = 0;
-  const e = enemy(g, p.x + 80, p.y, 'shambler', 20);
-  const behind = enemy(g, p.x + 120, p.y, 'shambler', 20);
-  step(g, { 1: { bits: 16, w: -1 } });
-  assert.equal(g.enemies.includes(e), false, 'front enemy died');
-  assert.ok(g.enemies.includes(behind), 'pistol does not pierce');
-  assert.equal(p.score, ENEMIES.shambler.points);
-  step(g, { 1: idle }, WEAPONS[0].cd);
-  step(g, { 1: { bits: 16, w: -1 } });
-  assert.equal(p.mult, 2, 'second kill within the combo window doubles');
-  assert.equal(p.score, ENEMIES.shambler.points * 3);
-  step(g, { 1: idle }, COMBO_TICKS + 1);
-  assert.equal(p.mult, 1, 'multiplier resets when the window passes');
-});
-
-test('weapons unlock by score in key order and come with ammo; out of ammo falls back to pistol', () => {
-  const g = arena(), p = g.players.get(1);
-  p.score = WEAPONS[3].unlock - 10;
-  p.fx = 1; p.fy = 0;
-  enemy(g, p.x + 60, p.y, 'shambler', 1);
-  step(g, { 1: { bits: 16, w: -1 } });
-  assert.equal(p.unlocked, 4, 'SMG, shotgun and barrel unlocked');
-  assert.equal(p.ammo[1], WEAPONS[1].grant);
-  assert.ok(g.drainEvents().some(e => e.type === 'unlock' && /Barrel \(key 4\)/.test(e.text)));
-  step(g, { 1: { bits: 0, w: 2 } });
-  assert.equal(p.weapon, 2);
-  step(g, { 1: { bits: 0, w: 9 } });
-  assert.equal(p.weapon, 2, 'cannot select a locked weapon');
-  p.ammo[2] = 1; p.cd = 0;
-  step(g, { 1: { bits: 16, w: -1 } });
-  assert.equal(p.weapon, 0, 'shotgun empty -> pistol');
-});
-
-test('shotgun fires several pellets; railgun pierces a whole line', () => {
-  const g = arena(), p = g.players.get(1);
-  p.fx = 1; p.fy = 0; p.unlocked = 10; p.ammo = WEAPONS.map(w => w.ammo);
-  p.weapon = 2;
-  step(g, { 1: { bits: 16, w: -1 } });
-  assert.equal(g.drainEvents().filter(e => e.type === 'tracer').length, WEAPONS[2].pellets);
-  const line = [60, 90, 120].map(d => enemy(g, p.x + d, p.y, 'hexer', 100));
-  p.weapon = 9; p.cd = 0;
-  step(g, { 1: { bits: 16, w: -1 } });
-  for (const e of line) assert.equal(g.enemies.includes(e), false, 'railgun killed every enemy in line');
-});
-
-test('barrels: placed in front, block movement, explode when shot, and chain', () => {
-  const g = arena(), p = g.players.get(1);
-  p.fx = 1; p.fy = 0; p.unlocked = 10; p.ammo = WEAPONS.map(w => w.ammo); p.weapon = 3;
-  step(g, { 1: { bits: 16, w: -1 } });
-  step(g, { 1: { bits: 16, w: -1 } });
-  assert.equal(g.objects.filter(o => o.kind === 'barrel').length, 1, 'placing needs a fresh press (and a free tile)');
-  const b1 = g.objects[0];
-  assert.ok(blocked(g.map, g.objects, b1.x, b1.y, 10));
-  g.objects.push({ id: g.nextId++, kind: 'barrel', x: b1.x + TILE * 2, y: b1.y, hp: 1, owner: 1 });
-  const victim = enemy(g, b1.x + TILE * 2 + 20, b1.y, 'shambler', 80);
-  p.weapon = 0; p.cd = 0;
-  step(g, { 1: { bits: 16, w: -1 } }); // shoot the first barrel
-  step(g, { 1: idle }, 2);             // chain reaction next tick
-  assert.equal(g.objects.length, 0, 'both barrels went up');
-  assert.equal(g.enemies.includes(victim), false, 'the chained barrel killed the enemy');
-  assert.ok(p.hp < PLAYER_HP, 'standing close to your own barrel hurts');
-});
-
-test('grenades, rockets, mines and charges explode', () => {
-  const g = arena(), p = g.players.get(1);
-  p.fx = 1; p.fy = 0; p.unlocked = 10; p.ammo = WEAPONS.map(w => w.ammo);
-  const boomsIn = n => { step(g, { 1: idle }, n); return g.drainEvents().filter(e => e.type === 'boom').length; };
-  p.weapon = 4; step(g, { 1: { bits: 16, w: -1 } });
-  assert.equal(boomsIn(40), 1, 'grenade fuse');
-  p.weapon = 7; p.cd = 0; enemy(g, p.x + 200, p.y, 'shambler', 999); step(g, { 1: { bits: 16, w: -1 } });
-  assert.equal(boomsIn(30), 1, 'rocket hits');
-  p.weapon = 6; p.cd = 0; step(g, { 1: { bits: 16, w: -1 } });
-  const mine = g.objects.find(o => o.kind === 'mine');
-  enemy(g, mine.x, mine.y, 'shambler', 999);
-  assert.equal(boomsIn(3), 1, 'mine triggers');
-  g.enemies = [];
-  p.weapon = 8;
-  for (let i = 0; i <= MAX_CHARGES; i++) { p.cd = 0; step(g, { 1: { bits: 16, w: -1 } }); step(g, { 1: idle }); g.players.get(1).y += TILE * 2; }
-  assert.ok(g.drainEvents().filter(e => e.type === 'boom').length + boomsIn(2) >= MAX_CHARGES, 'the 4th press detonates the charges');
-  assert.equal(g.objects.filter(o => o.kind === 'charge').length, 0);
-});
-
-test('shamblers bite, hexers cast fireballs, barricades get smashed', () => {
-  const g = arena(), p = g.players.get(1);
-  const s = enemy(g, p.x + 20, p.y, 'shambler'); s.cd = 0;
-  step(g, { 1: idle });
-  assert.equal(p.hp, PLAYER_HP - ENEMIES.shambler.dmg);
-  g.enemies = [];
-  const h = enemy(g, p.x + 200, p.y, 'hexer'); h.cd = 0;
-  step(g, { 1: idle });
-  assert.equal(g.shots.filter(x => x.kind === 'fireball').length, 1);
-  step(g, { 1: idle }, 60);
-  assert.ok(p.hp < PLAYER_HP - ENEMIES.shambler.dmg, 'fireball hit');
-  g.enemies = []; g.shots = [];
-  const bar = { id: g.nextId++, kind: 'barricade', x: p.x + TILE * 2, y: p.y, hp: 160, owner: 1 };
-  g.objects.push(bar);
-  const z = enemy(g, bar.x + TILE, bar.y, 'shambler'); z.speed = 1.5; z.cd = 0;
-  step(g, { 1: idle }, 400);
-  assert.ok(bar.hp < 160 || !g.objects.includes(bar), 'the shambler attacked the barricade in its way');
-});
-
-test('downed players are revived by a teammate; everyone down -> game over -> restart', () => {
-  const g = arena(2), [a, b] = [g.players.get(1), g.players.get(2)];
-  g.hurtPlayer(a, 999);
-  assert.equal(a.alive, false);
-  b.x = a.x + 10; b.y = a.y;
-  step(g, { 1: idle, 2: idle }, REVIVE_TICKS);
-  assert.equal(a.alive, true);
-  assert.equal(a.hp, PLAYER_HP / 2);
-  a.score = 5000; a.unlocked = 5;
-  g.hurtPlayer(a, 999); g.hurtPlayer(b, 999);
-  step(g, { 1: idle, 2: idle });
+test('deathmatch: everything unlocked, players hurt each other, frags, respawn shield, winner at the frag limit', () => {
+  const g = arena(2, { mode: 'deathmatch' }), [a, b] = [g.players.get(1), g.players.get(2)];
+  assert.equal(g.mult, 200);
+  assert.equal(g.unlocked.size, WEAPONS.length);
+  a.shield = b.shield = 0;
+  b.x = a.x + 60; b.y = a.y; a.fx = 1; a.fy = 0; a.weapon = 9; a.ammo[9] = 10; // railgun
+  step(g, { 1: fire, 2: idle });
+  assert.equal(b.alive, false);
+  assert.equal(a.frags, 1);
+  step(g, { 1: idle, 2: idle }, DM_RESPAWN_TICKS);
+  assert.equal(b.alive, true);
+  assert.ok(b.shield > DM_SPAWN_SHIELD - 5, 'spawn shield');
+  b.shield = 1; g.hurtPlayer(b, 999, 1);
+  assert.equal(b.alive, true, 'shielded right after respawn');
+  for (let i = a.frags; i < DM_FRAG_LIMIT; i++) { b.alive = true; b.shield = 0; b.hp = PLAYER_HP; g.hurtPlayer(b, 999, 1); }
   assert.equal(g.phase, 'over');
-  step(g, { 1: idle, 2: idle }, 160);
-  assert.equal(g.phase, 'break');
-  assert.ok(a.alive && b.alive);
-  assert.equal(a.score, 0); assert.equal(a.unlocked, 1);
+  assert.equal(g.winner, 1);
 });
 
-test('waves: break, spawn, clear, next wave bigger; dead players respawn at wave start', () => {
-  const g = new Game(9); g.addPlayer(1, 'a', '#fff'); g.addPlayer(2, 'b', '#fff');
-  step(g, { 1: idle, 2: idle }, 91);
-  assert.equal(g.phase, 'wave'); assert.equal(g.wave, 1);
-  const first = g.toSpawn.length + g.enemies.length;
-  g.hurtPlayer(g.players.get(2), 999);
-  g.toSpawn = []; g.enemies = [];
-  step(g, { 1: idle, 2: idle });
-  assert.equal(g.phase, 'break');
-  step(g, { 1: idle, 2: idle }, 151);
-  assert.equal(g.wave, 2);
-  assert.ok(g.toSpawn.length + g.enemies.length > first);
-  assert.equal(g.players.get(2).alive, true, 'respawned for the new wave');
-});
-
-test('pickups heal and refill ammo', () => {
-  const g = arena(), p = g.players.get(1);
-  p.hp = 50; p.unlocked = 3; p.ammo[1] = 0; p.ammo[2] = 0;
-  g.pickups.push({ id: 1, kind: 'health', x: p.x, y: p.y, ttl: 100 }, { id: 2, kind: 'ammo', x: p.x, y: p.y, ttl: 100 });
-  step(g, { 1: idle });
-  assert.equal(p.hp, 85);
-  assert.ok(p.ammo[1] + p.ammo[2] > 0);
-  assert.equal(g.pickups.length, 0);
-});
-
-test('a long game with four players stays fast and consistent', () => {
+test('a long four-player game stays fast', () => {
   const g = new Game(11);
   for (let i = 1; i <= 4; i++) g.addPlayer(i, 'p' + i, '#fff');
   const t0 = performance.now();
-  for (let i = 0; i < 6000; i++) {
+  for (let i = 0; i < 8000; i++) {
     const inp = {};
-    for (let k = 1; k <= 4; k++) inp[k] = { bits: [1, 2, 4, 8, 9, 6][Math.floor((i + k * 37) / 45) % 6] | (i % 7 < 4 ? 16 : 0), w: i % 300 === 0 ? (i / 300) % 10 : -1 };
-    step(g, inp);
-    g.drainEvents();
-    for (const p of g.players.values()) assert.ok(!blocked(g.map, [], p.x, p.y, 10));
+    for (let k = 1; k <= 4; k++) inp[k] = { bits: [1, 2, 4, 8, 9, 6][Math.floor((i + k * 37) / 70) % 6] | (i % 9 < 4 ? 16 : 0), w: i % 500 === 0 ? (i / 500) % 10 : -1 };
+    step(g, inp); g.drainEvents();
   }
-  const ms = (performance.now() - t0) / 6000;
-  assert.ok(ms < 3, `avg ${ms.toFixed(3)} ms per tick (tick budget 33 ms)`);
+  const ms = (performance.now() - t0) / 8000;
+  assert.ok(ms < 2, `avg ${ms.toFixed(3)} ms per tick (budget 20 ms)`);
   JSON.stringify(g.snapshot());
+});
+
+test('placing works wherever you stand within your tile (never on top of yourself)', () => {
+  const g = arena(), p = g.players.get(1);
+  g.unlocked.add('barrel'); g.unlocked.add('fakewall');
+  for (const off of [-9, -4, 0, 4, 9]) {
+    g.objects = [];
+    Object.assign(p, { x: MAP_W / 2 * TILE + 16 + off, y: MAP_H / 2 * TILE + 16, fx: 1, fy: 0, cd: 0, held: false, weapon: 3 });
+    p.ammo[3] = 5;
+    step(g, { 1: fire }); step(g, { 1: idle });
+    const b = g.objects.find(o => o.kind === 'barrel');
+    assert.ok(b, `placed at sub-tile offset ${off}`);
+    assert.ok(Math.abs(b.x - p.x) >= 10 + TILE / 2, 'not overlapping the placer');
+  }
 });

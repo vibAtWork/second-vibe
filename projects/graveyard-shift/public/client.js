@@ -18,7 +18,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 
 // Snapshot rows -> objects (field order defined by Game.snapshot in shared/sim.js).
 function decode(s) {
-  const players = s.players.map(([id, x, y, fx, fy, hp, alive, weapon, score, mult, unlocked, ammo, revive, name, color]) => ({ id, x, y, fx, fy, hp, alive: !!alive, weapon, score, mult, unlocked, ammo, revive, name, color }));
+  const players = s.players.map(([id, x, y, fx, fy, hp, alive, weapon, score, frags, ammo, revive, name, color, shield, respawn]) => ({ id, x, y, fx, fy, hp, alive: !!alive, weapon, score, frags, ammo, revive, name, color, shield: !!shield, respawn }));
   return {
     ...s, players,
     playerById: new Map(players.map(p => [p.id, p])),
@@ -37,6 +37,11 @@ export function startClient() {
   const params = new URLSearchParams(location.search);
   if (!params.get('room')) { params.set('room', Math.random().toString(36).slice(2, 8)); history.replaceState(null, '', '?' + params); }
   const room = params.get('room');
+  // Mode and difficulty travel in the invite link; the room's first visitor sets them.
+  $('mode').value = params.get('mode') === 'deathmatch' ? 'deathmatch' : 'coop';
+  $('diff').value = ['beginner', 'intermediate', 'expert', 'nightmare'].includes(params.get('diff')) ? params.get('diff') : 'beginner';
+  const newRoom = () => { const p = new URLSearchParams({ room: Math.random().toString(36).slice(2, 8), mode: $('mode').value, diff: $('diff').value }); location.search = '?' + p; };
+  $('mode').onchange = newRoom; $('diff').onchange = newRoom;
   try { $('name').value = localStorage.getItem('gs-name') || ''; } catch { /* private mode */ }
 
   // ---- input
@@ -57,7 +62,7 @@ export function startClient() {
 
   const send = m => { if (ws?.readyState === 1) ws.send(JSON.stringify(m)); };
   function connect() {
-    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?room=${encodeURIComponent(room)}`);
+    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?${new URLSearchParams({ room, mode: $('mode').value, diff: $('diff').value })}`);
     ws.onopen = () => {
       statusEl.textContent = `room "${room}"`;
       const slots = seats.splice(0).map(s => s.slot);
@@ -126,15 +131,17 @@ export function startClient() {
       case 'boom': fx.boom(ev.x, ev.y, ev.r); audio.boom(); break;
       case 'kill': fx.goo(ev.x, ev.y, ev.kind === 'hexer'); audio.kill(); break;
       case 'hurt': if (mine) audio.hurt(); break;
-      case 'down': fx.text(ev.x, ev.y, `${nameOf(s, ev.id)} is down!`, '#ff8a80'); break;
+      case 'down': fx.text(ev.x, ev.y, s.mode === 'deathmatch' ? `${nameOf(s, ev.id)} fragged` : `${nameOf(s, ev.id)} is down!`, '#ff8a80'); break;
+      case 'frag': if (mine) audio.unlockWeapon(); break;
+      case 'winner': banner = { text: `${nameOf(s, ev.id)} wins the deathmatch!`, color: '#ffe082', until: performance.now() + 5000 }; audio.wave(); break;
       case 'revive': audio.revive(); break;
       case 'cast': audio.cast(); break;
       case 'place': audio.place(); break;
       case 'throw': audio.throw(); break;
       case 'rocketfire': audio.rocketfire(); break;
       case 'pickup': if (mine) audio.pickup(); break;
-      case 'unlock': if (mine) { banner = { text: ev.text, color: '#ffe082', until: performance.now() + 2500 }; audio.unlockWeapon(); } break;
-      case 'wave': banner = { text: `Wave ${ev.wave}`, color: '#ff8a65', until: performance.now() + 2000 }; audio.wave(); break;
+      case 'unlock': banner = { text: ev.text, color: '#ffe082', until: performance.now() + 2200 }; audio.unlockWeapon(); break; // team-wide
+      case 'level': banner = { text: `Level ${ev.level}`, color: '#ff8a65', until: performance.now() + 2000 }; audio.wave(); break;
       case 'gameover': audio.wave(); break;
     }
   }
@@ -143,7 +150,7 @@ export function startClient() {
   function weaponChange(seat, k) {
     const me = latest?.playerById.get(seat.id);
     if (!me) return -1;
-    const usable = i => i < me.unlocked && (me.ammo[i] !== 0 || WEAPONS[i].kind === 'charge');
+    const usable = i => latest.unlocked[i] && (me.ammo[i] !== 0 || WEAPONS[i].kind === 'charge');
     if (k.numbers) for (let i = 0; i < DIGITS.length; i++) if (tapped.has(DIGITS[i]) && usable(i)) return i;
     const step = tapped.has(k.next) ? 1 : tapped.has(k.prev) ? -1 : 0;
     if (!step) return -1;
@@ -199,7 +206,8 @@ export function startClient() {
     const enemies = (st?.enemies || []).map(e => (e.dx || e.dy ? e : { ...e, dx: 1, dy: 0 }));
     draw({
       map, players, enemies, shots: st?.shots || [], objects: latest?.objects || [], pickups: latest?.pickups || [],
-      mine, wave: latest?.wave || 0, left: latest?.left || 0, phase: latest?.phase, timer: latest?.timer || 0, banner, rtt,
+      mine, level: latest?.level || 0, left: latest?.left || 0, phase: latest?.phase, timer: latest?.timer || 0, banner, rtt,
+      mode: latest?.mode, mult: latest?.mult || 1, multRatio: latest?.multRatio || 0, nextUnlock: latest?.nextUnlock, winner: latest?.winner, nameOf: id => latest && nameOf(latest, id),
       spectating: !seats.length, hudPlayers: latest?.players || [],
     });
   }
