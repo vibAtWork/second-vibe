@@ -12,3 +12,6 @@
 9. Replay recording (inputs + seed) and playback
 10. Lag simulator toggle in the client for testing netcode
 11. Gamepad support
+12. [done] Graveyard Shift: co-op survival shooter from the second supplied SWF (`projects/graveyard-shift`)
+13. Graveyard Shift: weapon upgrades (double ammo, fast fire, bigger blasts)
+14. Graveyard Shift: deathmatch mode

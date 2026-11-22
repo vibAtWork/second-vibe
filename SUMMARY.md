@@ -16,3 +16,6 @@ lifetime, fire limit, round timing and key bindings were taken from the supplied
 original (tank size is the main approximation). Power-up crates aren't implemented yet (BACKLOG #3).
 
 The Docker image `ghcr.io/vibatwork/ricochet-arena:latest` runs approach 1. Both approaches share one code base: game client, simulation, room and auditor live in `projects/ricochet-arena-server/public/`.
+
+3. **`projects/graveyard-shift`**: co-op survival shooter (up to 4 players) inspired by the second SWF.
+   Try: `docker run -d -p 8080:8080 ghcr.io/vibatwork/graveyard-shift:latest`, or `cd projects/graveyard-shift && npm start`.

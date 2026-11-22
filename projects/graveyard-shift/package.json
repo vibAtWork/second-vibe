@@ -1,0 +1,14 @@
+{
+  "name": "graveyard-shift",
+  "version": "1.0.0",
+  "description": "Graveyard Shift: browser co-op top-down survival shooter (authoritative Node server, no dependencies)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js",
+    "e2e": "node test/e2e.mjs"
+  },
+  "engines": { "node": ">=26" },
+  "license": "MIT"
+}

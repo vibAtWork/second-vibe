@@ -1,0 +1,53 @@
+name: Publish Graveyard Shift image
+
+on:
+  push:
+    branches: [main, master, claude/affectionate-euler-pqfw1h]
+    paths:
+      - 'projects/graveyard-shift/**'
+      - '.github/workflows/docker-graveyard-shift.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - name: Test (no dependencies to install)
+        working-directory: projects/graveyard-shift
+        run: npm test
+
+      # The image's final stage only copies files, so arm64 builds need no emulation.
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image name (lowercase owner)
+        id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/graveyard-shift" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: projects/graveyard-shift
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.img.outputs.name }}:latest
+            ${{ steps.img.outputs.name }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Graveyard Shift - browser co-op top-down survival shooter
+            org.opencontainers.image.licenses=MIT
