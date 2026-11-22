@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../server.js';
-import { Room, parseFrame, cleanName, MAX_QUEUE, STARVE_TICKS } from '../public/shared/room.js';
+import { Room, parseFrame, cleanName, MAX_QUEUE, STARVE_TICKS, TRIM_WINDOW } from '../public/shared/room.js';
 import { movePlayer } from '../public/shared/sim.js';
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -55,6 +55,21 @@ test('a weapon switch or fire tap in a dropped (overflowing) frame is not lost',
   assert.equal(q[0].w, 1); assert.equal(q[0].bits & 16, 16);
   room.tick();
   assert.equal(room.game.players.get(c.id).weapon, 1);
+});
+
+test('latency: a backed-up input buffer shrinks back to jitter size; snapshots carry each connection\'s ack', () => {
+  const room = new Room({ seed: 1, now: () => 0 });
+  const texts = [];
+  const c = { send: m => { if (m.t === 'joined') c.id = m.id; }, sendText: t => texts.push(t) }; room.addConn(c);
+  room.handle(c, { t: 'join', name: 'A' });
+  let seq = 0;
+  const feed = n => room.handle(c, { t: 'in', id: c.id, f: Array.from({ length: n }, () => [++seq, 8]) });
+  feed(MAX_QUEUE); // a lag spike delivered a burst
+  for (let i = 0; i < TRIM_WINDOW * 4; i++) { feed(1); room.tick(); }
+  const q = room.seats.get(c.id).queue.length;
+  assert.ok(q <= 1, `queue back to ${q} frame(s) between ticks`);
+  const m = JSON.parse(texts.at(-1));
+  assert.equal(m.t, 's'); assert.equal(m.ack[c.id], room.seats.get(c.id).lastSeq);
 });
 
 test('two clients play together; server movement equals local prediction', async () => {

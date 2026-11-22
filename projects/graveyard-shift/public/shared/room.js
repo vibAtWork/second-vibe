@@ -10,8 +10,17 @@ export const MAX_PLAYERS = 4;
 export const MAX_SEATS_PER_CONN = 2;   // a second player on the same keyboard
 export const MAX_QUEUE = 4;
 export const STARVE_TICKS = 75;        // 1.5 s without input -> idle
+export const TRIM_WINDOW = 50;         // check every second whether a seat's input buffer can shrink
 const RATE = { capacity: 150, perSec: 120, kickAfterDrops: 600 };
 const IDLE = { bits: 0, w: -1 };
+
+// Drop a seat's oldest queued frame, keeping its one-shot parts - a weapon switch or a
+// fire tap - by moving them onto the next frame, so a press is never lost.
+function dropOldest(seat) {
+  const d = seat.queue.shift(), next = seat.queue[0];
+  if (next) { if (next.w < 0) next.w = d.w; next.bits |= d.bits & 16; }
+  seat.last = d; seat.lastSeq = d.seq;
+}
 
 // Wire frame [seq, bits, w] -> validated input, or null.
 export function parseFrame(fr) {
@@ -79,7 +88,7 @@ export class Room {
     const id = this.nextId++;
     const used = new Set([...this.game.players.values()].map(p => p.color));
     const color = COLORS.find(c => !used.has(c)) || COLORS[id % COLORS.length];
-    this.seats.set(id, { id, conn, queue: [], last: IDLE, lastSeq: 0, starved: 0 });
+    this.seats.set(id, { id, conn, queue: [], last: IDLE, lastSeq: 0, starved: 0, minQ: Infinity, window: 0 });
     conn.seatIds.push(id);
     this.game.addPlayer(id, cleanName(msg.name), color);
     conn.send({ t: 'joined', id, slot: msg.slot === 'p2' ? 'p2' : 'p1' });
@@ -95,14 +104,7 @@ export class Room {
       const newest = seat.queue.length ? seat.queue.at(-1).seq : seat.lastSeq;
       if (f && f.seq > newest) seat.queue.push(f);
     }
-    // Too far ahead: drop the oldest frames (sending faster gains nothing), but keep their
-    // one-shot parts - a weapon switch or a fire tap - by moving them onto the next frame.
-    while (seat.queue.length > MAX_QUEUE) {
-      const d = seat.queue.shift(), next = seat.queue[0];
-      if (next.w < 0) next.w = d.w;
-      next.bits |= d.bits & 16;
-      seat.last = d; seat.lastSeq = d.seq;
-    }
+    while (seat.queue.length > MAX_QUEUE) dropOldest(seat); // too far ahead: sending faster gains nothing
   }
 
   mapMsg() { return { t: 'map', seed: this.game.map.seed, tiles: this.game.map.tiles, spawns: this.game.map.spawns }; }
@@ -110,6 +112,11 @@ export class Room {
   tick() {
     const g = this.game, inputs = new Map();
     for (const seat of this.seats.values()) {
+      // Latency: the queue is only a jitter buffer. If it never ran low during the last
+      // second, it holds more than jitter needs (clock drift, a past lag spike), and every
+      // extra frame is 20 ms of input delay - so drop one.
+      seat.minQ = Math.min(seat.minQ ?? Infinity, seat.queue.length);
+      if (++seat.window >= TRIM_WINDOW) { if (seat.minQ >= 2) dropOldest(seat); seat.minQ = Infinity; seat.window = 0; }
       const next = seat.queue.shift();
       if (next) { seat.last = next; seat.lastSeq = next.seq; seat.starved = 0; } else seat.starved++;
       // weapon switches apply once; held buttons repeat through short network hiccups
@@ -122,10 +129,13 @@ export class Room {
     if (g.tick % SNAPSHOT_EVERY) return; // simulate at 50 Hz, send at 25 Hz
     const snap = g.snapshot();
     snap.ev = this.events; this.events = [];
+    let body = null; // the snapshot is the same for everyone: stringify it once, prepend each connection's ack
     for (const c of this.conns) {
       const ack = {};
       for (const id of c.seatIds) ack[id] = this.seats.get(id)?.lastSeq ?? 0;
-      c.send({ ...snap, ack });
+      if (!c.sendText) { c.send({ ...snap, ack }); continue; }
+      body ??= JSON.stringify(snap).slice(1);
+      c.sendText(`{"ack":${JSON.stringify(ack)},${body}`);
     }
   }
 }

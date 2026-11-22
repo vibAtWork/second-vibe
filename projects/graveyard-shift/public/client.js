@@ -1,10 +1,12 @@
 // Browser client: input, prediction of your own movement, interpolation of
 // everything else, events -> effects/sounds, and the render loop.
-import { FRAME_MS, VIEW_W, VIEW_H, WEAPONS, movePlayer } from './shared/sim.js';
+import { FRAME_MS, SNAPSHOT_EVERY, VIEW_W, VIEW_H, WEAPONS, movePlayer } from './shared/sim.js';
 import { createRenderer } from './render.js';
 import { createAudio } from './audio.js';
 
-const INTERP_MS = 80;       // draw others this far in the past
+// Others are drawn in the past by one snapshot interval plus the jitter seen lately
+// (about 50 ms on a steady connection, more on a jittery one).
+const INTERP_MIN = 45, INTERP_MAX = 200, INTERP_MARGIN = 6;
 const SEND_REDUNDANCY = 4;  // resend recent input frames (packet-loss tolerance)
 const SMOOTH = 0.7;         // fade-out of prediction corrections
 // Controls. Player 1: arrows, Space, 1-0 or Z/X to switch. Player 2 (same keyboard): WASD, F, R/T to switch.
@@ -61,7 +63,7 @@ export function startClient() {
   addEventListener('pointerdown', () => audio.unlock());
 
   // ---- state
-  let ws = null, map = null, latest = null, clockOffset = null, rtt = 0, banner = null;
+  let ws = null, map = null, latest = null, clockOffset = null, rtt = 0, banner = null, interpMs = 80;
   const seats = [];   // local players: { slot, id, seq, pending, pred, off }
   const snaps = [], offsets = [];
 
@@ -71,7 +73,7 @@ export function startClient() {
     ws.onopen = () => {
       statusEl.textContent = `room "${room}"`;
       const slots = seats.splice(0).map(s => s.slot);
-      snaps.length = offsets.length = 0; clockOffset = latest = null;
+      snaps.length = offsets.length = 0; clockOffset = latest = null; interpMs = 80;
       slots.forEach(join);
     };
     ws.onclose = () => { statusEl.textContent = 'disconnected - retrying…'; setTimeout(connect, 1500); };
@@ -111,6 +113,9 @@ export function startClient() {
     offsets.push(now - s.tick * FRAME_MS); if (offsets.length > 60) offsets.shift();
     const best = Math.min(...offsets);
     clockOffset = clockOffset == null ? best : clockOffset + (best - clockOffset) * 0.1;
+    const late = Math.max(...offsets) - best; // worst lateness over the last ~2.4 s
+    const want = Math.max(INTERP_MIN, Math.min(INTERP_MAX, SNAPSHOT_EVERY * FRAME_MS + late + INTERP_MARGIN));
+    interpMs += (want - interpMs) * (want > interpMs ? 0.5 : 0.02); // back off fast, tighten slowly
     for (const ev of s.ev) onEvent(ev, s);
     // prediction: authoritative position at the acknowledged input + inputs not yet applied
     for (const seat of seats) {
@@ -187,7 +192,7 @@ export function startClient() {
   // ---- render: others interpolated between snapshots, own players predicted
   function interpolate() {
     if (!snaps.length || clockOffset == null) return null;
-    const rt = (performance.now() - clockOffset - INTERP_MS) / FRAME_MS;
+    const rt = (performance.now() - clockOffset - interpMs) / FRAME_MS;
     let a = snaps[0], b = snaps.at(-1);
     for (let i = snaps.length - 1; i > 0; i--) if (snaps[i - 1].tick <= rt) { a = snaps[i - 1]; b = snaps[i]; break; }
     const t = b.tick > a.tick ? Math.max(0, Math.min(1, (rt - a.tick) / (b.tick - a.tick))) : 1;
@@ -220,5 +225,5 @@ export function startClient() {
 
   connect();
   requestAnimationFrame(frame);
-  window.__gs = { seats, get latest() { return latest; }, get map() { return map; } }; // for automated tests
+  window.__gs = { seats, get latest() { return latest; }, get map() { return map; }, get interpMs() { return interpMs; } }; // for automated tests
 }

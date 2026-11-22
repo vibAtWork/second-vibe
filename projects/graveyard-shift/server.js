@@ -36,7 +36,7 @@ export function createServer({ port = 8080, log = console.log } = {}) {
     if (!rooms.has(name) && rooms.size >= MAX_ROOMS) return ws.close(1013, 'server full');
     let room = rooms.get(name);
     if (!room) { room = new Room({ mode: q.get('mode'), difficulty: q.get('diff'), log: m => log(`[${name}] ${m}`) }); rooms.set(name, room); } // the first visitor's link sets the room's mode
-    const conn = { send: m => ws.send(JSON.stringify(m)), kick: () => ws.terminate() };
+    const conn = { send: m => ws.send(JSON.stringify(m)), sendText: t => ws.send(t), kick: () => ws.terminate() };
     room.addConn(conn);
     ws.on('message', raw => { let m; try { m = JSON.parse(raw); } catch { return; } room.handle(conn, m); });
     ws.on('close', () => { room.removeConn(conn); if (!room.conns.size) rooms.delete(name); });

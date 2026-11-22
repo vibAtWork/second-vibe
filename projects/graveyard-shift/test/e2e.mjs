@@ -59,10 +59,11 @@ try {
   const bSees = await b.evaluate(() => window.__gs.latest.objects.map(o => o.kind));
   check(bSees.length === 3, `the other player sees them (${bSees.join(', ')})`);
   await a.keyboard.press('Digit8'); await sleep(100); await a.keyboard.press('ArrowUp'); await a.keyboard.press('Space'); await sleep(250);
+  Object.assign(ann, { alive: true, hp: 100, shield: 0 }); // the rocket may have set off a barrel next to Ann; switching is ignored while downed
   await a.keyboard.press('Digit3'); await sleep(100); await a.keyboard.down('Space'); await sleep(300); await a.keyboard.up('Space');
   if (out) await a.screenshot({ path: `${out}/gs-weapons.png` });
   await a.keyboard.up('Space');
-  const hud = await a.evaluate(() => window.__gs.latest.players.map(p => [p.name, p.weapon, p.score]));
+  const hud = await a.evaluate(() => window.__gs.latest.players.map(p => [p.name, p.weapon, p.score, p.alive, p.ammo[2], p.hp]));
   check(hud.some(([n, w]) => n === 'Ann' && w === 2), `weapon switching works (${JSON.stringify(hud)})`);
 
   // Deathmatch room: two other players, everything unlocked; Dee frags Eli with the railgun via the real keys.

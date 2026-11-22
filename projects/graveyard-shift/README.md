@@ -81,8 +81,14 @@ Health regenerates slowly (a full refill in 30 s), and health and ammo crates dr
   `Room` per invite link at 50 ticks/s, the original's frame rate, and send 25 updates/s.
 * `public/shared/sim.js` holds the whole game. The browser uses its `movePlayer()` (plain
   arithmetic) to predict your own movement, so controls react instantly and match the
-  server exactly. Everything else is drawn 80 ms in the past and blended between server
-  updates.
+  server exactly. Everything else is blended between server updates, drawn one update
+  interval plus the recently measured jitter in the past (about 50-60 ms on a steady
+  connection, more on a jittery one).
+* **Latency:** TCP_NODELAY is on, so small messages aren't held back. The server's
+  per-player input queue is only a jitter buffer: if it never runs low for a second, one
+  frame is dropped (keeping any weapon switch or shot in it), so clock drift or a lag spike
+  can't leave you with extra input delay. Each snapshot is serialized once per tick, not
+  once per player.
 * **Cheating:** the server runs the game and clients only send buttons. Every message is
   validated, one input is applied per tick (sending faster gains nothing), connections are
   rate-limited, and a player whose inputs stop arriving goes idle after 1.5 s. There is no
@@ -92,7 +98,7 @@ Health regenerates slowly (a full refill in 30 s), and health and ammo crates dr
 ## Tests
 
 ```bash
-npm test          # 24 tests: recovered tables and formulas, every weapon, upgrades, difficulties, deathmatch, room, server
+npm test          # 25 tests: recovered tables and formulas, every weapon, upgrades, difficulties, deathmatch, room, server
 npm run e2e       # headless Chromium players: co-op (prediction, building, switching) and a deathmatch frag
 npm run playtest  # bots play 6 scenarios (solo to 4p nightmare, deathmatch) for 30,000 ticks each, checking invariants every tick
 ```
