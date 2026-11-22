@@ -5,14 +5,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acceptUpgrades } from './ws.js';
-import { FRAME_MS } from './public/shared/sim.js';
+import { FRAME_MS, TICK_HZ } from './public/shared/sim.js';
 import { Room } from './public/shared/room.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 const MAX_ROOMS = 500;
 
-export function createServer({ port = 8080, log = console.log } = {}) {
+// SNAPSHOT_HZ: network updates per second (50 = every tick, the default; 25 halves upload bandwidth).
+export function createServer({ port = 8080, log = console.log, snapshotHz = +process.env.SNAPSHOT_HZ || TICK_HZ } = {}) {
+  const snapshotEvery = Math.max(1, Math.min(10, Math.round(TICK_HZ / snapshotHz)));
   const rooms = new Map();
   const server = http.createServer((req, res) => {
     let p;
@@ -35,7 +37,7 @@ export function createServer({ port = 8080, log = console.log } = {}) {
     const name = (q.get('room') || 'lobby').slice(0, 32).replace(/[^\w-]/g, '') || 'lobby';
     if (!rooms.has(name) && rooms.size >= MAX_ROOMS) return ws.close(1013, 'server full');
     let room = rooms.get(name);
-    if (!room) { room = new Room({ mode: q.get('mode'), difficulty: q.get('diff'), log: m => log(`[${name}] ${m}`) }); rooms.set(name, room); } // the first visitor's link sets the room's mode
+    if (!room) { room = new Room({ mode: q.get('mode'), difficulty: q.get('diff'), snapshotEvery, log: m => log(`[${name}] ${m}`) }); rooms.set(name, room); } // the first visitor's link sets the room's mode
     const conn = { send: m => ws.send(JSON.stringify(m)), sendText: t => ws.send(t), kick: () => ws.terminate() };
     room.addConn(conn);
     ws.on('message', raw => { let m; try { m = JSON.parse(raw); } catch { return; } room.handle(conn, m); });
@@ -52,11 +54,11 @@ export function createServer({ port = 8080, log = console.log } = {}) {
   })();
 
   return new Promise(resolve => server.listen(port, () => resolve({
-    port: server.address().port, rooms,
+    port: server.address().port, rooms, updatesPerSec: TICK_HZ / snapshotEvery,
     close: () => { clearTimeout(timer); server.close(); for (const s of sockets) s.terminate(); },
   })));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  createServer({ port: +(process.env.PORT || 8080) }).then(({ port }) => console.log(`Graveyard Shift running at http://localhost:${port}`));
+  createServer({ port: +(process.env.PORT || 8080) }).then(({ port, updatesPerSec }) => console.log(`Graveyard Shift running at http://localhost:${port} (${updatesPerSec} updates/s)`));
 }

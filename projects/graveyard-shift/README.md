@@ -28,6 +28,11 @@ Or with Docker (published by `.github/workflows/docker-graveyard-shift.yml`, amd
 docker run -d --name graveyard-shift -p 8080:8080 --restart unless-stopped ghcr.io/vibatwork/graveyard-shift:latest
 ```
 
+Settings (environment variables): `PORT` (default 8080) and `SNAPSHOT_HZ`, the server's
+updates per second: 50 by default, or 25 to halve upload bandwidth if your connection is
+slow. A busy 4-player game uses about 30-60 KB/s of upload per player at 50 (about
+2 Mbit/s in total). For example `docker run ... -e SNAPSHOT_HZ=25 ...`.
+
 Open the page, press **Join**, and send the invite link (**Copy invite link**). Everyone with
 the same link plays in the same room.
 
@@ -78,12 +83,18 @@ Health regenerates slowly (a full refill in 30 s), and health and ammo crates dr
 ## How it works
 
 * `server.js` plus `ws.js` (a minimal built-in WebSocket server) run one authoritative
-  `Room` per invite link at 50 ticks/s, the original's frame rate, and send 25 updates/s.
+  `Room` per invite link at 50 ticks/s, the original's frame rate, and send an update every tick (`SNAPSHOT_HZ`).
 * `public/shared/sim.js` holds the whole game. The browser uses its `movePlayer()` (plain
   arithmetic) to predict your own movement, so controls react instantly and match the
   server exactly. Everything else is blended between server updates, drawn one update
-  interval plus the recently measured jitter in the past (about 50-60 ms on a steady
+  interval plus the recently measured jitter in the past (about 30-45 ms on a steady
   connection, more on a jittery one).
+* **Your own shots** play their sound and muzzle flash the moment you fire. The browser
+  runs the server's own trigger logic (`trigger()`/`gunStep()` in sim.js) on the weapon
+  state from the last update plus the inputs sent since, like movement. Each shot event
+  names the input frame that fired it, so a shot is never played twice, and one the browser
+  didn't predict (say, just after being revived) still plays when the server reports it.
+  Placing barrels, barricades, mines and charges can fail, so those wait for the server.
 * **Latency:** TCP_NODELAY is on, so small messages aren't held back. The server's
   per-player input queue is only a jitter buffer: if it never runs low for a second, one
   frame is dropped (keeping any weapon switch or shot in it), so clock drift or a lag spike
@@ -98,7 +109,7 @@ Health regenerates slowly (a full refill in 30 s), and health and ammo crates dr
 ## Tests
 
 ```bash
-npm test          # 25 tests: recovered tables and formulas, every weapon, upgrades, difficulties, deathmatch, room, server
+npm test          # 30 tests (incl. shot prediction vs. server, frame for frame): recovered tables and formulas, every weapon, upgrades, difficulties, deathmatch, room, server
 npm run e2e       # headless Chromium players: co-op (prediction, building, switching) and a deathmatch frag
 npm run playtest  # bots play 6 scenarios (solo to 4p nightmare, deathmatch) for 30,000 ticks each, checking invariants every tick
 ```

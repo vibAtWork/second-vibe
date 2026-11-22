@@ -10,7 +10,7 @@
 
 export const TICK_HZ = 50;                 // the original runs at 50 frames per second
 export const FRAME_MS = 1000 / TICK_HZ;
-export const SNAPSHOT_EVERY = 2;           // network updates at 25 Hz
+export const SNAPSHOT_EVERY = 1;           // network updates every tick (50 Hz); the server can lower it with SNAPSHOT_HZ
 export const TILE = 32;                    // one map cell
 export const MAP_W = 30, MAP_H = 20;
 export const WORLD_W = MAP_W * TILE, WORLD_H = MAP_H * TILE;
@@ -184,6 +184,37 @@ function rayCircle(x, y, ux, uy, cx, cy, r) {
 }
 
 // A weapon's live stats after the upgrades the team has unlocked (recovered factors).
+// The trigger, shared by the server and the browser's shot prediction so both agree on
+// exactly which tick a weapon fires: counts the cooldown down, then fires on press
+// (semi-automatic), while held (automatic) or on release (grenades).
+export function trigger(p, fire, s) {
+  if (p.cd > 0) p.cd--;
+  let shoot;
+  if (s.onRelease) { shoot = !fire && p.held && p.cd === 0; if (fire) p.charging++; }
+  else shoot = fire && p.cd === 0 && (s.auto || !p.held);
+  p.held = fire;
+  return shoot;
+}
+
+// Shot prediction for the browser: one tick of Game.step's weapon handling on a copy of a
+// player's weapon state ({ alive, respawn, weapon, cd, held, charging, ammo }), using the snapshot's
+// `unlocked` and `wfire` (fire rate and auto after upgrades). Returns the weapon index if a
+// weapon that always fires (guns, rocket, grenade) fired this tick, else -1. Placing can fail,
+// so it isn't predicted, and its ammo is corrected by the next snapshot.
+const PREDICTED = new Set(['gun', 'rail', 'shotgun', 'rocket', 'throw']);
+export function gunStep(g, bits, w, snap) {
+  if (!g.alive) { if (g.respawn > 0 && --g.respawn <= 0) g.alive = true; return -1; } // deathmatch respawn countdown
+  if (w >= 0 && snap.unlocked[w] && (g.ammo[w] > 0 || WEAPONS[w].kind === 'charge')) { g.weapon = w; g.charging = 0; }
+  const i = g.weapon, kind = WEAPONS[i].kind, [fireRate, auto] = snap.wfire[i], fire = !!(bits & 16);
+  const shoot = trigger(g, fire, { fireRate, auto: !!auto, onRelease: WEAPONS[i].onRelease });
+  if (WEAPONS[i].onRelease && !fire) g.charging = 0;
+  if (!shoot) return -1;
+  if (Number.isFinite(g.ammo[i]) && kind !== 'charge') g.ammo[i]--; // Game.fire's bookkeeping
+  g.cd = fireRate;
+  if (g.ammo[i] <= 0 && kind !== 'charge') g.weapon = 0;
+  return PREDICTED.has(kind) ? i : -1;
+}
+
 export function weaponStats(base, ups = {}) {
   const s = { ...base, wide: 0, bang: 0, cluster: false };
   if (ups.DoubleDamage) s.damage = base.damage * 2;
@@ -389,7 +420,7 @@ export class Game {
       if (best?.kind === 'barrel') { best.dead = true; this.explode(best.x, best.y, 'barrel', p.id, best.dmg, best.bang, best.cluster); }
       else if (best && best.kind !== 'barricade') this.hitThing(best, s.damage, p.id);
     }
-    this.events.push({ type: 'tracer', x1: sx, y1: sy, x2: sx + ux * end, y2: sy + uy * end, rail: pierce ? 1 : 0 });
+    this.events.push({ type: 'tracer', id: p.id, x1: sx, y1: sy, x2: sx + ux * end, y2: sy + uy * end, rail: pierce ? 1 : 0 });
   }
 
   hitThing(v, dmg, by) { if (v.kind) this.damageEnemy(v, dmg, by); else this.hurtPlayer(v, dmg, by); } // enemies have a kind, players don't
@@ -431,14 +462,14 @@ export class Game {
       const power = Math.min(1, 0.35 + p.charging / 40), ux = Math.cos(facing), uy = Math.sin(facing);
       const dist = s.range * TILE * power, v = dist / 30;
       this.shots.push({ id: this.nextId++, kind: 'grenade', x: p.x + ux * 12, y: p.y + uy * 12, vx: ux * v, vy: uy * v, owner: p.id, fuse: 60, dmg: s.damage, bang: s.bang, cluster: s.cluster, fly: 30 });
-      this.events.push({ type: 'throw', x: p.x, y: p.y });
+      this.events.push({ type: 'throw', id: p.id, x: p.x, y: p.y });
     } else { // rocket
       const ux = Math.cos(facing), uy = Math.sin(facing);
       this.shots.push({ id: this.nextId++, kind: 'rocket', x: p.x + ux * 12, y: p.y + uy * 12, vx: ux * 7, vy: uy * 7, owner: p.id, fuse: 150, dmg: s.damage, bang: s.bang, cluster: s.cluster });
-      this.events.push({ type: 'rocketfire', x: p.x, y: p.y });
+      this.events.push({ type: 'rocketfire', id: p.id, x: p.x, y: p.y });
     }
     if (used && Number.isFinite(p.ammo[i])) p.ammo[i]--;
-    if (s.kind === 'gun' || s.kind === 'rail' || s.kind === 'shotgun') this.events.push({ type: 'shot', weapon: i, x: p.x, y: p.y });
+    if (s.kind === 'gun' || s.kind === 'rail' || s.kind === 'shotgun') this.events.push({ type: 'shot', id: p.id, weapon: i, x: p.x, y: p.y });
     p.cd = s.fireRate;
     if (p.ammo[i] <= 0 && s.kind !== 'charge') p.weapon = 0;
   }
@@ -464,14 +495,9 @@ export class Game {
       if (p.hp < PLAYER_HP) p.hp = Math.min(PLAYER_HP, p.hp + REGEN_PER_TICK); // recovered regen
       if (inp.w >= 0 && this.unlocked.has(WEAPONS[inp.w].id) && (p.ammo[inp.w] > 0 || WEAPONS[inp.w].kind === 'charge')) { p.weapon = inp.w; p.charging = 0; }
       movePlayer(this.map, this.objects, p, inp.bits);
-      if (p.cd > 0) p.cd--;
       const fire = !!(inp.bits & 16), s = this.stats(p.weapon);
-      if (s.onRelease) { // grenades: hold to wind up, release to throw
-        if (fire) p.charging++;
-        else if (p.held && p.cd === 0) this.fire(p);
-        if (!fire) p.charging = 0;
-      } else if (fire && p.cd === 0 && (s.auto || !p.held)) this.fire(p);
-      p.held = fire;
+      if (trigger(p, fire, s)) this.fire(p);
+      if (s.onRelease && !fire) p.charging = 0; // grenades wind up while held; the throw reads the wind-up first
       for (const k of this.pickups) {
         if (k.dead || Math.abs(k.x - p.x) > 18 || Math.abs(k.y - p.y) > 18) continue;
         if (k.kind === 'health') { if (p.hp >= PLAYER_HP) continue; p.hp = Math.min(PLAYER_HP, p.hp + 50); }
@@ -594,8 +620,9 @@ export class Game {
       t: 's', tick: this.tick, mode: this.mode, difficulty: this.difficulty, level: this.level, phase: this.phase, timer: this.phaseTimer,
       left: this.phase === 'level' ? this.toSpawn.shambler + this.toSpawn.hexer + this.enemies.length : 0,
       mult: this.mult, multRatio: Math.max(0, Math.min(1, this.multTimer / multiplierTicks(this.mult))), winner: this.winner,
-      unlocked: WEAPONS.map(w => (this.unlocked.has(w.id) ? 1 : 0)), nextUnlock: UNLOCKS[this.unlockIndex] ? [UNLOCKS[this.unlockIndex][0], unlockLabel(UNLOCKS[this.unlockIndex])] : null,
-      players: [...this.players.values()].map(p => [p.id, p.x, p.y, p.fx, p.fy, Math.ceil(p.hp), p.alive ? 1 : 0, p.weapon, p.score, p.frags, p.ammo.map(a => (Number.isFinite(a) ? a : -1)), p.revive, p.name, p.color, p.shield > 0 ? 1 : 0, p.respawn]),
+      unlocked: WEAPONS.map(w => (this.unlocked.has(w.id) ? 1 : 0)),
+      wfire: WEAPONS.map((w, i) => { const st = this.stats(i); return [st.fireRate, st.auto ? 1 : 0]; }), // after upgrades, for shot prediction nextUnlock: UNLOCKS[this.unlockIndex] ? [UNLOCKS[this.unlockIndex][0], unlockLabel(UNLOCKS[this.unlockIndex])] : null,
+      players: [...this.players.values()].map(p => [p.id, p.x, p.y, p.fx, p.fy, Math.ceil(p.hp), p.alive ? 1 : 0, p.weapon, p.score, p.frags, p.ammo.map(a => (Number.isFinite(a) ? a : -1)), p.revive, p.name, p.color, p.shield > 0 ? 1 : 0, p.respawn, p.cd, p.held ? 1 : 0]),
       enemies: this.enemies.map(e => [e.id, e.kind === 'hexer' ? 1 : 0, r1(e.x), r1(e.y), Math.round(e.hp / e.maxHp * 100)]),
       shots: this.shots.map(s => [s.id, s.kind, r1(s.x), r1(s.y)]),
       objects: this.objects.map(o => [o.id, o.kind, o.x, o.y, o.hp, o.owner]),

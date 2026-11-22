@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../server.js';
 import { Room, parseFrame, cleanName, MAX_QUEUE, STARVE_TICKS, TRIM_WINDOW } from '../public/shared/room.js';
-import { movePlayer } from '../public/shared/sim.js';
+import { movePlayer, gunStep, rng } from '../public/shared/sim.js';
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 5000) { const t0 = Date.now(); while (!fn()) { if (Date.now() - t0 > ms) throw new Error('timeout'); await wait(10); } }
@@ -70,6 +70,70 @@ test('latency: a backed-up input buffer shrinks back to jitter size; snapshots c
   assert.ok(q <= 1, `queue back to ${q} frame(s) between ticks`);
   const m = JSON.parse(texts.at(-1));
   assert.equal(m.t, 's'); assert.equal(m.ack[c.id], room.seats.get(c.id).lastSeq);
+});
+
+// The browser's shot prediction (gunStep, rolled back to every snapshot like movement)
+// must call exactly the shots the server fires, frame for frame, despite network delay.
+function shotPrediction(mode, delay, shielded) {
+  let clock = 0; // the rate limiter refills with time
+  const room = new Room({ seed: 3, mode, now: () => clock, snapshotEvery: 1 });
+  const toClient = [];
+  const c = { send: m => { if (m.t === 'joined') c.id = m.id; }, sendText: t => toClient.push(JSON.parse(t)) }; room.addConn(c);
+  room.handle(c, { t: 'join', name: 'A' });
+  const g = room.game;
+  if (mode === 'coop') g.setMultiplier(80); // most weapons and fire-rate upgrades
+  const rand = rng(+(process.env.SHOT_SEED || 7)), wire = [], toServer = [], predicted = new Set(), fired = new Set();
+  let seq = 0, gun = null, held = 0, latest = null, first = 0, deaths = 0;
+  for (let t = 0; t < 4000; t++) {
+    g.enemies = []; g.toSpawn = { shambler: 0, hexer: 0 }; g.pickups = []; // no zombies, nothing refills ammo
+    if (shielded) g.players.get(c.id).shield = 1e6; // and (unless testing deaths) nobody dies
+    // a jittery player: bursts of holding fire, taps, weapon switches
+    if (held > 0) held--; else if (rand() < 0.08) held = 1 + Math.floor(rand() * 40);
+    const w = rand() < 0.03 ? Math.floor(rand() * 10) : -1;
+    const f = [++seq, (held > 0 || rand() < 0.05 ? 16 : 0) | (1 << Math.floor(rand() * 4)), w];
+    wire.push(f);
+    if (gun && latest) { const i = gunStep(gun, f[1], f[2], latest); if (i >= 0) predicted.add(f[0]); } else first = seq; // no snapshot yet: the server's event plays instead
+    toServer.push([t + delay, wire.slice(-4)]);
+    while (toServer.length && toServer[0][0] <= t) room.handle(c, { t: 'in', id: c.id, f: toServer.shift()[1] });
+    const wasAlive = g.players.get(c.id).alive;
+    room.tick(); clock += 20;
+    if (wasAlive && !g.players.get(c.id).alive) deaths++;
+    const snap = toClient.at(-1);
+    for (const ev of snap.ev) if (ev.id === c.id && ['shot', 'rocketfire', 'throw'].includes(ev.type)) { assert.ok(ev.seq > 0, 'shot tagged with its frame'); fired.add(ev.seq); }
+    // the client sees snapshots `delay` ticks late
+    const s = toClient[toClient.length - 1 - delay];
+    if (s && s !== latest) {
+      latest = s;
+      const me = s.players.find(r => r[0] === c.id), ack = s.ack[c.id] ?? 0;
+      gun = { alive: !!me[6], respawn: me[15], weapon: me[7], cd: me[16], held: !!me[17], charging: 0, ammo: me[10].map(a => (a < 0 ? Infinity : a)) };
+      for (const fr of wire) if (fr[0] > ack) gunStep(gun, fr[1], fr[2], s);
+    }
+  }
+  const settled = [...fired].filter(q => q > first && q < seq - 20);
+  const missed = settled.filter(q => !predicted.has(q)), phantom = [...predicted].filter(q => q < seq - 40 && !fired.has(q));
+  return { shots: settled.length, missed, phantom, deaths };
+}
+for (const [mode, delay] of [['deathmatch', 3], ['coop', 5], ['deathmatch', 0]]) test(`shot prediction matches the server exactly (${mode}, ${delay}-tick delay each way)`, () => {
+  const r = shotPrediction(mode, delay, true);
+  assert.ok(r.shots > 100, `enough shots fired (${r.shots})`);
+  assert.deepEqual([r.missed, r.phantom], [[], []], 'predicted shots == server shots');
+});
+test('shot prediction through deaths and respawns stays close (deathmatch, own rockets can kill)', () => {
+  const r = shotPrediction('deathmatch', 4, false);
+  if (process.env.SHOT_SEED) console.log(`deaths ${r.deaths} shots ${r.shots} missed ${r.missed.length} phantom ${r.phantom.length}`);
+  assert.ok(r.deaths > 3, `the player died a few times (${r.deaths})`);
+  // Death isn't predictable, so a shot or two around each death can be off; a missed one
+  // still plays when the server's event arrives. Respawns are predicted exactly.
+  assert.ok(r.missed.length + r.phantom.length <= r.deaths * 3, `${r.missed.length} missed + ${r.phantom.length} phantom for ${r.deaths} deaths, ${r.shots} shots`);
+});
+
+test('snapshot rate: every tick by default, every other tick with SNAPSHOT_HZ=25', () => {
+  for (const [every, want] of [[undefined, 10], [2, 5]]) {
+    const room = new Room({ seed: 1, now: () => 0, ...(every ? { snapshotEvery: every } : {}) });
+    let n = 0; room.addConn({ send: () => {}, sendText: () => n++ });
+    for (let i = 0; i < 10; i++) room.tick();
+    assert.equal(n, want);
+  }
 });
 
 test('two clients play together; server movement equals local prediction', async () => {

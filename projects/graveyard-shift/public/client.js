@@ -1,12 +1,12 @@
 // Browser client: input, prediction of your own movement, interpolation of
 // everything else, events -> effects/sounds, and the render loop.
-import { FRAME_MS, SNAPSHOT_EVERY, VIEW_W, VIEW_H, WEAPONS, movePlayer } from './shared/sim.js';
+import { FRAME_MS, VIEW_W, VIEW_H, WEAPONS, movePlayer, gunStep } from './shared/sim.js';
 import { createRenderer } from './render.js';
 import { createAudio } from './audio.js';
 
 // Others are drawn in the past by one snapshot interval plus the jitter seen lately
 // (about 50 ms on a steady connection, more on a jittery one).
-const INTERP_MIN = 45, INTERP_MAX = 200, INTERP_MARGIN = 6;
+const INTERP_MIN = 30, INTERP_MAX = 200, INTERP_MARGIN = 6, JITTER_WINDOW = 100; // window: ~2 s at 50 updates/s
 const SEND_REDUNDANCY = 4;  // resend recent input frames (packet-loss tolerance)
 const SMOOTH = 0.7;         // fade-out of prediction corrections
 // Controls. Player 1: arrows, Space, 1-0 or Z/X to switch. Player 2 (same keyboard): WASD, F, R/T to switch.
@@ -20,7 +20,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 
 // Snapshot rows -> objects (field order defined by Game.snapshot in shared/sim.js).
 function decode(s) {
-  const players = s.players.map(([id, x, y, fx, fy, hp, alive, weapon, score, frags, ammo, revive, name, color, shield, respawn]) => ({ id, x, y, fx, fy, hp, alive: !!alive, weapon, score, frags, ammo, revive, name, color, shield: !!shield, respawn }));
+  const players = s.players.map(([id, x, y, fx, fy, hp, alive, weapon, score, frags, ammo, revive, name, color, shield, respawn, cd, held]) => ({ id, x, y, fx, fy, hp, alive: !!alive, weapon, score, frags, ammo, revive, name, color, shield: !!shield, respawn, cd, held: !!held }));
   return {
     ...s, players,
     playerById: new Map(players.map(p => [p.id, p])),
@@ -52,18 +52,18 @@ export function startClient() {
   try { $('name').value = localStorage.getItem('gs-name') || ''; } catch { /* private mode */ }
 
   // ---- input
-  const keys = new Set(), tapped = new Set();
+  const keys = new Set(), tapped = new Set(), released = new Set(); // tapped/released: since the last input frame
   addEventListener('keydown', e => {
     audio.unlock();
     if (document.activeElement === $('name') || !GAME_KEYS.has(e.code)) return;
     keys.add(e.code); if (!e.repeat) tapped.add(e.code); e.preventDefault();
   });
-  addEventListener('keyup', e => keys.delete(e.code));
+  addEventListener('keyup', e => { keys.delete(e.code); released.add(e.code); });
   addEventListener('blur', () => keys.clear());
   addEventListener('pointerdown', () => audio.unlock());
 
   // ---- state
-  let ws = null, map = null, latest = null, clockOffset = null, rtt = 0, banner = null, interpMs = 80;
+  let ws = null, map = null, latest = null, clockOffset = null, rtt = 0, banner = null, interpMs = 80, snapGap = 40;
   const seats = [];   // local players: { slot, id, seq, pending, pred, off }
   const snaps = [], offsets = [];
 
@@ -84,7 +84,7 @@ export function startClient() {
     if (seats.some(s => s.slot === slot)) return;
     const base = $('name').value.trim() || 'Survivor';
     try { localStorage.setItem('gs-name', base); } catch { /* private mode */ }
-    seats.push({ slot, id: null, seq: 0, pending: [], pred: null, off: { x: 0, y: 0 } });
+    seats.push({ slot, id: null, seq: 0, pending: [], pred: null, off: { x: 0, y: 0 }, gun: null, played: new Set() });
     send({ t: 'join', name: slot === 'p1' ? base : `${base} 2`, slot });
     audio.unlock();
     updateButtons();
@@ -109,19 +109,25 @@ export function startClient() {
     const now = performance.now();
     if (!latest || latest.mode !== s.mode || latest.difficulty !== s.difficulty) showMode(s.mode, s.difficulty);
     latest = s;
+    if (snaps.length) snapGap = Math.max(1, Math.min(10, s.tick - snaps.at(-1).tick)) * FRAME_MS; // the server's update interval
     snaps.push(s); if (snaps.length > 40) snaps.shift();
-    offsets.push(now - s.tick * FRAME_MS); if (offsets.length > 60) offsets.shift();
+    offsets.push(now - s.tick * FRAME_MS); if (offsets.length > JITTER_WINDOW) offsets.shift();
     const best = Math.min(...offsets);
     clockOffset = clockOffset == null ? best : clockOffset + (best - clockOffset) * 0.1;
-    const late = Math.max(...offsets) - best; // worst lateness over the last ~2.4 s
-    const want = Math.max(INTERP_MIN, Math.min(INTERP_MAX, SNAPSHOT_EVERY * FRAME_MS + late + INTERP_MARGIN));
+    const late = Math.max(...offsets) - best; // worst lateness over the last ~2 s
+    const want = Math.max(INTERP_MIN, Math.min(INTERP_MAX, snapGap + late + INTERP_MARGIN));
     interpMs += (want - interpMs) * (want > interpMs ? 0.5 : 0.02); // back off fast, tighten slowly
     for (const ev of s.ev) onEvent(ev, s);
     // prediction: authoritative position at the acknowledged input + inputs not yet applied
     for (const seat of seats) {
       const p = seat.id != null && s.playerById.get(seat.id);
-      if (!p || !map) { seat.pred = null; continue; }
-      seat.pending = seat.pending.filter(f => f.seq > (s.ack[seat.id] ?? 0));
+      if (!p || !map) { seat.pred = null; seat.gun = null; continue; }
+      const ack = s.ack[seat.id] ?? 0;
+      seat.pending = seat.pending.filter(f => f.seq > ack);
+      for (const q of seat.played) if (q <= ack) seat.played.delete(q); // the server has reported those frames' shots
+      // the trigger: the same rollback, so played shots line up with the server's
+      seat.gun = { alive: p.alive, respawn: p.respawn, weapon: p.weapon, cd: p.cd, held: p.held, charging: 0, ammo: p.ammo.map(a => (a < 0 ? Infinity : a)) };
+      for (const f of seat.pending) gunStep(seat.gun, f.bits, f.wire[2], s);
       const before = seat.pred;
       const pred = { x: p.x, y: p.y, fx: p.fx, fy: p.fy, alive: p.alive };
       if (p.alive) for (const f of seat.pending) movePlayer(map, s.objects, pred, f.bits);
@@ -137,8 +143,8 @@ export function startClient() {
   function onEvent(ev, s) {
     const mine = seats.some(x => x.id === ev.id);
     switch (ev.type) {
-      case 'tracer': fx.tracer(ev.x1, ev.y1, ev.x2, ev.y2, ev.rail); fx.flash(ev.x1, ev.y1); break;
-      case 'shot': audio.shot[ev.weapon]?.(); break;
+      case 'tracer': fx.tracer(ev.x1, ev.y1, ev.x2, ev.y2, ev.rail); if (!alreadyPlayed(ev)) fx.flash(ev.x1, ev.y1); break;
+      case 'shot': if (!alreadyPlayed(ev)) { audio.shot[ev.weapon]?.(); if (mine) shotStats.late++; } break;
       case 'boom': fx.boom(ev.x, ev.y, ev.r); audio.boom(); break;
       case 'kill': fx.goo(ev.x, ev.y, ev.kind === 'hexer'); audio.kill(); break;
       case 'hurt': if (mine) audio.hurt(); break;
@@ -148,8 +154,8 @@ export function startClient() {
       case 'revive': audio.revive(); break;
       case 'cast': audio.cast(); break;
       case 'place': audio.place(); break;
-      case 'throw': audio.throw(); break;
-      case 'rocketfire': audio.rocketfire(); break;
+      case 'throw': if (!alreadyPlayed(ev)) audio.throw(); break;
+      case 'rocketfire': if (!alreadyPlayed(ev)) audio.rocketfire(); break;
       case 'pickup': if (mine) audio.pickup(); break;
       case 'unlock': banner = { text: ev.text, color: '#ffe082', until: performance.now() + 2200 }; audio.unlockWeapon(); break; // team-wide
       case 'level': banner = { text: `Level ${ev.level}`, color: '#ff8a65', until: performance.now() + 2000 }; audio.wave(); break;
@@ -157,7 +163,14 @@ export function startClient() {
     }
   }
 
-  // ---- 30 Hz input tick (a timer, so input keeps flowing in background tabs)
+  // ---- shot prediction (gunStep in sim.js): your own shots play at once, not a round trip later
+  const FLASHES = new Set(['gun', 'rail', 'shotgun']);
+  const playFire = i => { const k = WEAPONS[i].kind; if (k === 'rocket') audio.rocketfire(); else if (k === 'throw') audio.throw(); else audio.shot[i]?.(); };
+  // a shot from one of our seats whose sound/flash we already played locally
+  const alreadyPlayed = ev => !!ev.seq && seats.some(x => x.id === ev.id && x.played.has(ev.seq));
+  const shotStats = { instant: 0, late: 0 }; // own shots played at once vs. only when the server reported them
+
+  // ---- 50 Hz input tick (a timer, so input keeps flowing in background tabs)
   function weaponChange(seat, k) {
     const me = latest?.playerById.get(seat.id);
     if (!me) return -1;
@@ -173,14 +186,26 @@ export function startClient() {
     for (const seat of seats) {
       if (seat.id == null) continue;
       const k = KEYS[seat.slot], on = c => keys.has(c) || tapped.has(c);
-      const bits = (on(k.up) ? 1 : 0) | (on(k.down) ? 2 : 0) | (on(k.left) ? 4 : 0) | (on(k.right) ? 8 : 0) | (on(k.fire) ? 16 : 0);
+      // Fire released and pressed again within one frame: send the release now and the press
+      // next frame, or the server would see one long hold (a lost pistol shot or grenade throw).
+      let fire = on(k.fire);
+      if (seat.pressNext) { fire = true; seat.pressNext = false; }
+      else if (fire && seat.lastFire && released.has(k.fire)) { fire = false; seat.pressNext = true; }
+      seat.lastFire = fire;
+      const bits = (on(k.up) ? 1 : 0) | (on(k.down) ? 2 : 0) | (on(k.left) ? 4 : 0) | (on(k.right) ? 8 : 0) | (fire ? 16 : 0);
       const seq = ++seat.seq;
       seat.pending.push({ seq, bits, wire: [seq, bits, weaponChange(seat, k)] });
       if (seat.pending.length > 120) seat.pending.shift();
       send({ t: 'in', id: seat.id, f: seat.pending.slice(-SEND_REDUNDANCY).map(f => f.wire) });
       if (seat.pred?.alive && map && latest) movePlayer(map, latest.objects, seat.pred, bits);
+      const shot = seat.gun && latest ? gunStep(seat.gun, bits, seat.pending.at(-1).wire[2], latest) : -1;
+      if (shot >= 0) { // your own shot: sound and muzzle flash now, not a round trip later
+        seat.played.add(seq); shotStats.instant++;
+        playFire(shot);
+        if (seat.pred && FLASHES.has(WEAPONS[shot].kind)) fx.flash(seat.pred.x + seat.off.x + seat.pred.fx * 12, seat.pred.y + seat.off.y + seat.pred.fy * 12);
+      }
     }
-    tapped.clear();
+    tapped.clear(); released.clear();
   }
   setInterval(() => {
     const now = performance.now();
@@ -225,5 +250,5 @@ export function startClient() {
 
   connect();
   requestAnimationFrame(frame);
-  window.__gs = { seats, get latest() { return latest; }, get map() { return map; }, get interpMs() { return interpMs; } }; // for automated tests
+  window.__gs = { seats, get latest() { return latest; }, get map() { return map; }, get interpMs() { return interpMs; }, shotStats }; // for automated tests
 }

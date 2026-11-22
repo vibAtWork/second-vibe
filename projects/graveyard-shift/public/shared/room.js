@@ -13,6 +13,7 @@ export const STARVE_TICKS = 75;        // 1.5 s without input -> idle
 export const TRIM_WINDOW = 50;         // check every second whether a seat's input buffer can shrink
 const RATE = { capacity: 150, perSec: 120, kickAfterDrops: 600 };
 const IDLE = { bits: 0, w: -1 };
+const FIRE_EVENTS = new Set(['shot', 'tracer', 'rocketfire', 'throw']);
 
 // Drop a seat's oldest queued frame, keeping its one-shot parts - a weapon switch or a
 // fire tap - by moving them onto the next frame, so a press is never lost.
@@ -36,7 +37,8 @@ export const cleanName = name => [...String(name ?? '')]
 
 export class Room {
   // mode: 'coop' | 'deathmatch'; difficulty: 'beginner' | 'intermediate' | 'expert' | 'nightmare'
-  constructor({ seed, mode, difficulty, log = () => {}, now = () => performance.now() } = {}) {
+  constructor({ seed, mode, difficulty, log = () => {}, now = () => performance.now(), snapshotEvery = SNAPSHOT_EVERY } = {}) {
+    this.snapshotEvery = Math.max(1, Math.round(snapshotEvery));
     this.game = new Game(seed, { mode, difficulty });
     this.log = log;
     this.now = now;
@@ -110,7 +112,7 @@ export class Room {
   mapMsg() { return { t: 'map', seed: this.game.map.seed, tiles: this.game.map.tiles, spawns: this.game.map.spawns }; }
 
   tick() {
-    const g = this.game, inputs = new Map();
+    const g = this.game, inputs = new Map(), applied = new Map(); // seat id -> seq of the frame used this tick
     for (const seat of this.seats.values()) {
       // Latency: the queue is only a jitter buffer. If it never ran low during the last
       // second, it holds more than jitter needs (clock drift, a past lag spike), and every
@@ -118,15 +120,19 @@ export class Room {
       seat.minQ = Math.min(seat.minQ ?? Infinity, seat.queue.length);
       if (++seat.window >= TRIM_WINDOW) { if (seat.minQ >= 2) dropOldest(seat); seat.minQ = Infinity; seat.window = 0; }
       const next = seat.queue.shift();
-      if (next) { seat.last = next; seat.lastSeq = next.seq; seat.starved = 0; } else seat.starved++;
+      if (next) { seat.last = next; seat.lastSeq = next.seq; seat.starved = 0; applied.set(seat.id, next.seq); } else seat.starved++;
       // weapon switches apply once; held buttons repeat through short network hiccups
       inputs.set(seat.id, seat.starved > STARVE_TICKS ? IDLE : next || { bits: seat.last.bits, w: -1 });
     }
     const mapSeed = g.map.seed;
     g.step(inputs);
     if (g.map.seed !== mapSeed) for (const c of this.conns) c.send(this.mapMsg());
-    this.events = (this.events || []).concat(g.drainEvents());
-    if (g.tick % SNAPSHOT_EVERY) return; // simulate at 50 Hz, send at 25 Hz
+    const events = g.drainEvents();
+    // Tag shots with the input frame that fired them, so the shooter's browser (which plays
+    // its own shots at once) can skip the ones it already played. 0 = no fresh frame this tick.
+    for (const ev of events) if (FIRE_EVENTS.has(ev.type)) ev.seq = applied.get(ev.id) ?? 0;
+    this.events = (this.events || []).concat(events);
+    if (g.tick % this.snapshotEvery) return; // simulate at 50 Hz, send every snapshotEvery ticks
     const snap = g.snapshot();
     snap.ev = this.events; this.events = [];
     let body = null; // the snapshot is the same for everyone: stringify it once, prepend each connection's ack

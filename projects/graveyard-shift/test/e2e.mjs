@@ -40,8 +40,15 @@ try {
   await a.waitForFunction(() => window.__gs.latest?.phase === 'level', null, { timeout: 8000 });
   check(await a.evaluate(() => window.__gs.latest.mode === 'coop' && window.__gs.latest.level === 1), 'co-op room, level 1 (beginner)');
   await sleep(4000);
+  let serverShots = 0; { const st = game.step.bind(game); game.step = i => { st(i); serverShots += game.events.filter(e => e.type === 'shot' && e.id === ann.id).length; }; }
+  ann.shield = 1e6; // the wave can't down Ann here, so every press must fire
   for (let i = 0; i < 4; i++) { await a.keyboard.down('Space'); await a.keyboard.press(['ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft'][i]); await sleep(700); await a.keyboard.up('Space'); }
   if (out) await a.screenshot({ path: `${out}/gs-wave.png` });
+
+  const shots = await a.evaluate(() => window.__gs.shotStats);
+  ann.shield = 0;
+  check(serverShots === 4, `four quick presses of the pistol fire four shots (${serverShots})`);
+  check(shots.instant === serverShots && shots.late === 0, `own shots play instantly (${shots.instant} instant, ${shots.late} late, server ${serverShots})`);
 
   // Unlock everything for Ann and try the special weapons through the real controls.
   for (const w of WEAPONS) game.unlocked.add(w.id);
@@ -65,6 +72,9 @@ try {
   await a.keyboard.up('Space');
   const hud = await a.evaluate(() => window.__gs.latest.players.map(p => [p.name, p.weapon, p.score, p.alive, p.ammo[2], p.hp]));
   check(hud.some(([n, w]) => n === 'Ann' && w === 2), `weapon switching works (${JSON.stringify(hud)})`);
+  await sleep(300);
+  const shots2 = await a.evaluate(() => window.__gs.shotStats);
+  check(shots2.instant > shots.instant && shots2.late === 0, `rocket and shotgun shots play instantly too (${shots2.instant} instant, ${shots2.late} late)`);
 
   // Deathmatch room: two other players, everything unlocked; Dee frags Eli with the railgun via the real keys.
   const d1 = await player('Dee', 'room=dm1&mode=deathmatch'), d2 = await player('Eli', 'room=dm1&mode=deathmatch');

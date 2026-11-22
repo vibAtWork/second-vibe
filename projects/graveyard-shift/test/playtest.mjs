@@ -1,6 +1,6 @@
 // Automated playtest: bots that play sensibly, with invariants checked every tick.
 // Run: node test/playtest.mjs [ticks]   (prints a report; exits 1 on any violation)
-import { Game, WEAPONS, TILE, PLAYER_R, PLAYER_HP, blocked } from '../public/shared/sim.js';
+import { Game, WEAPONS, TILE, PLAYER_R, PLAYER_HP, TICK_HZ, blocked } from '../public/shared/sim.js';
 
 const TICKS = +(process.argv[2] || 30000);
 const problems = [];
@@ -71,7 +71,7 @@ for (const [name, opts, n] of scenarios) {
   const g = new Game(1234 + n, opts);
   const mem = new Map();
   for (let i = 1; i <= n; i++) { g.addPlayer(i, 'bot' + i, '#fff'); mem.set(i, { offset: i * 17 % 120, flee: 0, aim: 0, phase: 'move' }); }
-  const stats = { kills: 0, downs: 0, frags: 0, winners: 0, unlocks: 0, levels: new Set(), maxEnemies: 0, maxSnap: 0, maxMs: 0, boom: 0, gameovers: 0, joinLeave: 0, selfKills: 0 };
+  const stats = { kills: 0, downs: 0, frags: 0, winners: 0, unlocks: 0, levels: new Set(), maxEnemies: 0, maxSnap: 0, maxMs: 0, boom: 0, gameovers: 0, joinLeave: 0, selfKills: 0, sumSnap: 0, nSnap: 0 };
   let total = 0;
   try {
     for (let t = 0; t < TICKS; t++) {
@@ -92,13 +92,13 @@ for (const [name, opts, n] of scenarios) {
       }
       stats.levels.add(g.level);
       stats.maxEnemies = Math.max(stats.maxEnemies, g.enemies.length);
-      if (t % 50 === 0) stats.maxSnap = Math.max(stats.maxSnap, JSON.stringify(g.snapshot()).length);
+      if (t % 50 === 0) { const n = JSON.stringify(g.snapshot()).length; stats.maxSnap = Math.max(stats.maxSnap, n); stats.sumSnap += n; stats.nSnap++; }
       check(name, g, t);
     }
   } catch (err) { note(name, g.tick, 'EXCEPTION ' + err.stack.split('\n').slice(0, 3).join(' | ')); }
   console.log(name.padEnd(22), `levels ${Math.min(...stats.levels)}-${Math.max(...stats.levels)}`, `kills ${stats.kills}`, `downs ${stats.downs}`, `gameovers ${stats.gameovers}`,
     `frags ${stats.frags}`, `self-kills ${stats.selfKills}`, `top frags ${Math.max(...[...g.players.values()].map(p => p.frags))}`, `winners ${stats.winners}`, `unlocks ${stats.unlocks}`, `booms ${stats.boom}`, `max enemies ${stats.maxEnemies}`,
-    `max snapshot ${(stats.maxSnap / 1024).toFixed(1)} KB`, `avg ${(total / TICKS).toFixed(3)} ms/tick, worst ${stats.maxMs.toFixed(1)} ms`);
+    `snapshot avg ${(stats.sumSnap / stats.nSnap / 1024).toFixed(1)} / max ${(stats.maxSnap / 1024).toFixed(1)} KB (${Math.round(stats.sumSnap / stats.nSnap * TICK_HZ / 1024)} KB/s per player at 50 Hz)`, `avg ${(total / TICKS).toFixed(3)} ms/tick, worst ${stats.maxMs.toFixed(1)} ms`);
 }
 console.log(problems.length ? `\n${problems.length} problem(s):\n` + problems.join('\n') : '\nno invariant violations');
 process.exitCode = problems.length ? 1 : 0;
