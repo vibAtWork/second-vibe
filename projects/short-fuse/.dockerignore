@@ -1,0 +1,7 @@
+node_modules
+test
+re
+*.md
+Dockerfile
+.dockerignore
+package.json
