@@ -103,7 +103,7 @@ export function startClient() {
 
   function onSnapshot(s) {
     const now = performance.now();
-    if (latest && latest.arena !== s.arena) $('arena').value = s.arena;
+    if (!latest || latest.arena !== s.arena) $('arena').value = s.arena; // the header shows what the room actually plays
     if (snaps.length) snapGap = Math.max(1, Math.min(10, s.tick - snaps.at(-1).tick)) * FRAME_MS;
     latest = s;
     snaps.push(s); if (snaps.length > 30) snaps.shift();

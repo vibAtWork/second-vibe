@@ -298,7 +298,12 @@ export class Game {
     const left = this.secondsLeft();
     if (left > 0 && left < SUDDEN_DEATH_SECONDS) this.suddenDeath(fighters);
     const alive = fighters.filter(p => p.alive);
-    if (alive.length <= 1 || left <= 0) this.endHeat(alive.length === 1 ? alive[0] : null, fighters.length, left);
+    if (alive.length <= 1 || left <= 0) return this.endHeat(alive.length === 1 ? alive[0] : null, fighters.length, left);
+    // as in the original, the heat also ends once every human is out: the bot with the most lives takes it
+    if (fighters.some(p => !p.bot) && !alive.some(p => !p.bot)) {
+      const best = alive.reduce((x, y) => (y.lives > x.lives ? y : x));
+      this.endHeat(alive.filter(p => p.lives === best.lives).length === 1 ? best : null, fighters.length, left);
+    }
   }
 
   endHeat(winner, count, left) {
@@ -581,7 +586,8 @@ function botInput(g, p) {
   if (p.canThrow === 0) return 0; // carrying (never happens for bots, but release)
   m.sinceBomb = (m.sinceBomb ?? 0) + 1;
   const cx = Math.round(p.x / CELL), cy = Math.round(p.y / CELL), perCell = CELL / SPEEDS[p.speed];
-  const passable = (i, j) => at(g.grid, i, j) === OPEN || (i === cx && j === cy);
+  const pads = new Set(g.floor.filter(f => f.kind === 'tele').map(f => key(f.i, f.j)));
+  const passable = (i, j) => (at(g.grid, i, j) === OPEN && !pads.has(key(i, j))) || (i === cx && j === cy); // bots don't use teleporters
   const unsafeAt = (k, when) => danger[k] !== Infinity && when >= danger[k] - perCell - 2 && when <= danger[k] + FLAME_TICKS + 2;
   // breadth-first search from the current cell with arrival times
   const bfs = (dmap = danger, avoidAll = false) => {
@@ -642,7 +648,21 @@ function botInput(g, p) {
   // 3. go somewhere useful: a pickup, a spot next to a crate, or a rival
   const pick = () => {
     const ok = search.order.filter(k => danger[k] === Infinity);
-    const pk = ok.find(k => g.pickups.has(k) && g.pickups.get(k) !== 1 || (g.pickups.get(k) === 1 && p.speed < MAX_SPEED));
+    const near = k => search.dist.get(k) <= 6;
+    const pk = ok.find(k => g.pickups.has(k) && (g.pickups.get(k) !== 1 || p.speed < MAX_SPEED));
+    if (pk !== undefined && near(pk)) return pk;
+    // hunt: a reachable cell from which a bomb would reach a rival
+    const line = new Set();
+    for (const r of rivals) {
+      const ri = Math.round(r.x / CELL), rj = Math.round(r.y / CELL);
+      line.add(key(ri, rj));
+      for (const dir of [1, 2, 3, 4]) {
+        const [dx, dy] = DIRS[dir];
+        for (let s = 1; s <= p.length; s++) { if (at(g.grid, ri + dx * s, rj + dy * s) > 0) break; line.add(key(ri + dx * s, rj + dy * s)); }
+      }
+    }
+    const hunt = ok.find(k => line.has(k));
+    if (hunt !== undefined && (search.dist.get(hunt) <= 8 || aggression > 1)) return hunt;
     if (pk !== undefined) return pk;
     const crateSpot = ok.find(k => { const i = Math.floor(k / ROWS), j = k % ROWS; return [[0, -1], [0, 1], [-1, 0], [1, 0]].some(([dx, dy]) => at(g.grid, i + dx, j + dy) === CRATE && !g.burning.has(key(i + dx, j + dy))); });
     if (crateSpot !== undefined) return crateSpot;

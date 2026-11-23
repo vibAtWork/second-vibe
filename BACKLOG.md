@@ -16,3 +16,6 @@
 13. [done] Graveyard Shift: weapon upgrades (recovered 58-step multiplier table)
 14. [done] Graveyard Shift: deathmatch mode + difficulties
 15. Graveyard Shift: bonus weapons from the original's code (Devastator, Smart Bomb, homing missiles)
+16. [done] Short Fuse: online grid bomber from the third supplied SWF (`projects/short-fuse`), rules recovered from its ActionScript
+17. Short Fuse: touch controls (virtual stick + bomb button)
+18. Short Fuse: bots that kick and throw bombs on purpose

@@ -21,3 +21,8 @@ The Docker image `ghcr.io/vibatwork/ricochet-arena:latest` runs approach 1. Both
    Try: `docker run -d -p 8080:8080 ghcr.io/vibatwork/graveyard-shift:latest`, or `cd projects/graveyard-shift && npm start`.
    Rules come from the reverse-engineered SWF (see `RE-NOTES.md`). Co-op has four difficulties, and there's a deathmatch mode.
    Checks: `npm test` (24 tests), `npm run e2e` (headless browsers), `npm run playtest` (bots in 6 scenarios, invariants checked every tick).
+
+4. **`projects/short-fuse`**: online grid bomber (up to 4 players, bots fill empty seats) from the third SWF.
+   Try: `docker run -d -p 8080:8080 ghcr.io/vibatwork/short-fuse:latest`, or `cd projects/short-fuse && npm start`.
+   Rules and numbers recovered from the original's ActionScript (see `RE-NOTES.md`); four arenas (classic, fire lines, teleporters, madness).
+   Checks: `npm test` (24 tests), `npm run e2e`, `npm run playtest`.

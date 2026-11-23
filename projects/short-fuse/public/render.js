@@ -165,8 +165,9 @@ export function createRenderer(canvas) {
     ctx.textAlign = 'center'; ctx.fillStyle = sudden ? (Math.floor(t / 300) % 2 ? '#ff5252' : '#ffab91') : '#e9ecf1';
     ctx.font = '700 16px system-ui'; ctx.fillText(`${m}:${String(s).padStart(2, '0')}`, BOARD_W / 2, y0 + 22);
     ctx.font = '600 8px system-ui'; ctx.fillStyle = '#8f99a8';
-    ctx.fillText(sudden ? 'SUDDEN DEATH' : `${ARENAS[v.arena]?.name ?? ''} · heat ${Math.max(1, v.heat)}/${HEATS}`, BOARD_W / 2, y0 + 34);
-    ctx.fillText(`ping ${Math.round(v.rtt)} ms`, BOARD_W / 2, y0 + 50);
+    ctx.fillText(sudden ? 'SUDDEN DEATH' : `heat ${Math.max(1, v.heat)}/${HEATS}`, BOARD_W / 2, y0 + 34);
+    ctx.fillText(ARENAS[v.arena]?.name ?? '', BOARD_W / 2, y0 + 43);
+    ctx.fillText(`ping ${Math.round(v.rtt)} ms`, BOARD_W / 2, y0 + 53);
     // up to 4 player cards, two each side of the clock
     const cards = [...v.players].filter(p => p.fighting).sort((a, b) => a.slot - b.slot);
     const waiting = [...v.players].filter(p => !p.fighting);

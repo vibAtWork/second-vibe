@@ -331,6 +331,10 @@ test('bots: fill seats, never start a heat alone, survive their own bombs most o
   }
   void selfHits;
   assert.ok(hits < 40, `bots rarely blow themselves up (${hits} hits in 150 s)`);
+  // the heat ends as soon as every human is out
+  const g2 = new Game(12, { bots: 2 }); g2.addPlayer(1, 'H', '#fff'); step(g2); step(g2, {}, READY_TICKS);
+  const h = g2.players.get(1); h.lives = 1; g2.hit(h); step(g2);
+  assert.equal(g2.phase, 'result');
   assert.ok(g.heat >= 1);
   // the danger map sees chain reactions
   const [d] = duel(); plain(d);
