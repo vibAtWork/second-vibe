@@ -38,7 +38,7 @@ Unlike the second game, it is **not obfuscated**. The logic lives in clip events
 **Timing and units.** 24 frames per second; one Short Fuse tick per frame. The grid is
 15 × 13 cells of 30 units, with pillars on even/even cells inside a wall border.
 
-**Movement** (`player1` enterFrame, ported line by line into `movePlayer`):
+**Movement** (`player1` enterFrame, ported line by line into `move` in `public/shared/game.js`):
 
 * Speed levels `arrSpeeds = [2, 3, 5, 6, 10]` units per frame. You start at level 2
   (5 per frame, 4 cells per second). Every speed divides 30, so you land exactly on cell
@@ -126,6 +126,13 @@ without (both divided by the aggression factor).
   * In the original, a picked-up bomb kept following the player who *laid* it.
   * After a thrown bomb exploded, the original credited the bomb slot to the *thrower*.
     The layer never got it back, and the thrower could gain bombs.
+* **Bombs claim their cell the moment they come to rest.** That covers landing after a
+  throw, stopping after a kick, and being dropped. The original claimed it one frame
+  later. In that frame a second bomb could be laid or land in the same cell, and one of
+  the two then lived on as a "ghost". If the cell is somehow taken, the bomb rests on a
+  free neighbour instead.
+* **A bomb that can't move can't be kicked:** one already exploding, or one up against
+  something. In the original a "kick" against a wall opened the bomb's cell for a frame.
 * **Fire lines** can hit each tile once per burn; the original's flag was never reset,
   so each tile could hit only once per round.
 * **Flame arms in multiplayer:** an arm is still used up by its first hit, as in the

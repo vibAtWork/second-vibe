@@ -34,3 +34,17 @@
   - Added an original chiptune soundtrack, Music/Sound toggles, and a skin loader (`SKIN_DIR`) for the owner's own art/sound/music files (not committed).
   - Declined to copy or imitate the original game's art, music or look.
   - 32 tests; e2e, pvp and playtest green.
+- 2026-11-23: Short Fuse rewritten from scratch (owner: "too buggy").
+  - Kept: the recovered rules, RE tools, ws.js and the Docker setup.
+  - New: one rules file (game.js) with prediction and bots, room.js netcode, client, renderer, audio, skins, and all-new tests.
+  - Found the owner's "a crate revealed a bomb and then everything was buggy" bug:
+    - The extra-bomb power-up looked like a real bomb.
+    - Landing/stopping bombs claimed their cell a tick late, so two bombs could share a cell and one went on as a ghost (caught by the new playtest invariants).
+    - Both fixed: unmistakable power-up tiles, and bombs claim their cell at once.
+  - Also fixed: kicks of bombs that can't move (kick spam + prediction mismatches); a wrong "joins next heat" notice.
+  - Kept the owner's keys from ever triggering focused header buttons/menus.
+  - Results:
+    - 26 unit/net tests, e2e 10/10.
+    - pvp: 0 corrections at 50-400 ms.
+    - soak: 4 self-playing browsers on 25-200 ms, 0-2 corrections each in 150 s classic; server state consistent.
+    - Playtest: 16 scenarios, no violations.

@@ -1,245 +1,246 @@
-// Browser client: input, prediction of your own movement, interpolation of everyone
-// else, events -> effects/sounds, and the render loop.
-import { FRAME_MS, CELL, ROWS, PredictedWorld, gridFromString } from './shared/sim.js';
+// Browser client: keyboard -> input frames, prediction of your own player, interpolation of
+// everyone else, events -> effects and sounds, and the draw loop.
+import { TICK_MS, CELL, ROWS, UP, DOWN, LEFT, RIGHT, BOMB_KEY, Prediction } from './shared/game.js';
 import { createRenderer } from './render.js';
 import { createAudio } from './audio.js';
 import { loadSkin } from './skin.js';
 
-// Others are drawn one update interval plus the recently measured jitter in the past.
-const INTERP_MIN = 45, INTERP_MAX = 250, INTERP_MARGIN = 8, JITTER_WINDOW = 50; // window: ~2 s at 24 updates/s
-const SEND_REDUNDANCY = 4;  // resend recent input frames (packet-loss tolerance)
-const SMOOTH = 0.75;        // fade-out of prediction corrections per drawn frame
-const SNAP_DIST = 40;       // corrections bigger than this (a teleport) jump instead of gliding
-// Controls. Player 1: arrows + Space (or Enter / ;). Player 2 on the same keyboard: WASD + F (or \).
+const RESEND = 4;              // each message repeats the last few frames (loss tolerance)
+const SMOOTH = 0.8;            // how fast a prediction correction fades (per drawn frame)
+const JUMP = 40;               // corrections bigger than this (a teleport) jump instead of gliding
+const DELAY = { min: 50, max: 300, margin: 10 }; // others are drawn this far in the past (adaptive)
 const KEYS = {
-  p1: { up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'], action: ['Space', 'Enter', 'Semicolon'] },
-  p2: { up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], action: ['KeyF', 'Backslash'] },
+  p1: { [UP]: ['ArrowUp'], [DOWN]: ['ArrowDown'], [LEFT]: ['ArrowLeft'], [RIGHT]: ['ArrowRight'], [BOMB_KEY]: ['Space', 'Enter', 'Semicolon'] },
+  p2: { [UP]: ['KeyW'], [DOWN]: ['KeyS'], [LEFT]: ['KeyA'], [RIGHT]: ['KeyD'], [BOMB_KEY]: ['KeyF', 'Backslash'] },
 };
 const GAME_KEYS = new Set(Object.values(KEYS).flatMap(k => Object.values(k).flat()));
 const lerp = (a, b, t) => a + (b - a) * t;
 
-// Snapshot rows -> objects (field order defined by Game.snapshot in shared/sim.js).
+// snapshot rows -> objects (the field order is Game.snapshot's)
 function decode(s) {
-  const players = s.players.map(([id, x, y, dir, lives, alive, inv, speed, length, bombs, kick, canThrow, holding, name, color, wins, points, bot, fighting, slot, laid, actionHeld]) =>
-    ({ laid, actionHeld: !!actionHeld, id, x, y, dir, lives, alive: !!alive, inv: !!inv, speed, length, bombs, kick: !!kick, canThrow, holding: !!holding, name, color, wins, points, bot: !!bot, fighting: !!fighting, slot }));
+  const players = s.players.map(([id, x, y, dir, alive, fighting, lives, inv, speed, length, bombs, laid, kick, glove, button, carrying, name, color, bot, slot, wins, points]) =>
+    ({ id, x, y, dir, alive: !!alive, fighting: !!fighting, lives, inv: !!inv, speed, length, bombs, laid, kick: !!kick, glove, button: !!button, carrying: !!carrying, name, color, bot: !!bot, slot, wins, points }));
   return {
-    ...s, players,
-    playerById: new Map(players.map(p => [p.id, p])),
-    gridArr: gridFromString(s.grid),
-    bombs: s.bombs.map(([id, x, y, count, state]) => ({ id, x, y, count, state })),
+    ...s, players, byId: new Map(players.map(p => [p.id, p])),
+    cells: Array.from(s.grid, Number),
+    bombs: s.bombs.map(([id, x, y, count, state, owner]) => ({ id, x, y, count, state, owner })),
     flames: s.flames.map(([x, y, dir, end, life]) => ({ x, y, dir, end: !!end, life })),
   };
 }
 
 export function startClient() {
   const $ = id => document.getElementById(id);
-  const canvas = $('c'), statusEl = $('status');
-  const skin = {}; // optional: your own art and sound (see skin.js); loads in the background
-  const { draw, fx } = createRenderer(canvas, skin);
-  const audio = createAudio(skin);
-  loadSkin().then(s => { Object.assign(skin, s); audio.skinReady(); });
-  const toggles = () => { $('music').textContent = audio.musicOn ? '♪ Music on' : '♪ Music off'; $('sound').textContent = audio.sfx ? '🔊 Sound on' : '🔇 Sound off'; };
-  $('music').onclick = () => { audio.unlock(); audio.setMusic(!audio.musicOn); toggles(); $('c').focus?.(); };
-  $('sound').onclick = () => { audio.unlock(); audio.setSfx(!audio.sfx); toggles(); };
-  toggles();
   const params = new URLSearchParams(location.search);
   if (!params.get('room')) { params.set('room', Math.random().toString(36).slice(2, 8)); history.replaceState(null, '', '?' + params); }
   const room = params.get('room');
-  // Arena and bots travel in the invite link; the room's first visitor sets them.
-  const ARENA_IDS = ['classic', 'firelines', 'teleport', 'madness'];
-  $('arena').value = ARENA_IDS.includes(params.get('arena')) ? params.get('arena') : 'classic';
+  const skin = {};
+  const view = createRenderer($('c'), skin), audio = createAudio(skin);
+  loadSkin().then(s => { Object.assign(skin, s); audio.skinReady(); });
+
+  // ---- header controls (buttons give the keyboard back to the game after a click)
+  $('arena').value = ['classic', 'firelines', 'teleport', 'madness'].includes(params.get('arena')) ? params.get('arena') : 'classic';
   $('bots').value = ['0', '1', '2', '3'].includes(params.get('bots')) ? params.get('bots') : '0';
   const newRoom = () => { location.search = '?' + new URLSearchParams({ room: Math.random().toString(36).slice(2, 8), arena: $('arena').value, bots: $('bots').value }); };
   $('arena').onchange = newRoom; $('bots').onchange = newRoom;
   try { $('name').value = localStorage.getItem('sf-name') || ''; } catch { /* private mode */ }
-
-  // ---- input
-  const keys = new Set(), tapped = new Set(), released = new Set(); // tapped/released: since the last input frame
-  addEventListener('keydown', e => {
-    audio.unlock();
-    if (document.activeElement === $('name') || !GAME_KEYS.has(e.code)) return;
-    keys.add(e.code); if (!e.repeat) tapped.add(e.code); e.preventDefault();
-  });
-  addEventListener('keyup', e => { keys.delete(e.code); released.add(e.code); });
-  addEventListener('blur', () => keys.clear());
-  addEventListener('pointerdown', () => audio.unlock());
-
-  // ---- state
-  let ws = null, latest = null, arena = null, clockOffset = null, rtt = 0, banner = null, interpMs = 80, snapGap = FRAME_MS;
-  const seats = [];   // local players: { slot, id, seq, pending, pred, prev, off, lastFire, pressNext }
-  const snaps = [], offsets = [];
-  let lastTick = performance.now();
-  const predStats = { corrections: 0, max: 0, log: [] }; // how often the server disagreed with your predicted position
-
-  const send = m => { if (ws?.readyState === 1) ws.send(JSON.stringify(m)); };
-  function connect() {
-    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?${new URLSearchParams({ room, arena: $('arena').value, bots: $('bots').value })}`);
-    ws.onopen = () => {
-      statusEl.textContent = `room "${room}"`;
-      const slots = seats.splice(0).map(s => s.slot);
-      snaps.length = offsets.length = 0; clockOffset = latest = null; interpMs = 80;
-      slots.forEach(join);
-    };
-    ws.onclose = () => { statusEl.textContent = 'disconnected - retrying…'; setTimeout(connect, 1500); };
-    ws.onmessage = e => { try { onMessage(JSON.parse(e.data)); } catch { /* ignore */ } };
-  }
-
-  function join(slot) {
-    if (seats.some(s => s.slot === slot)) return;
-    const base = $('name').value.trim() || 'Bomber';
-    try { localStorage.setItem('sf-name', base); } catch { /* private mode */ }
-    seats.push({ slot, id: null, seq: 0, pending: [], pred: null, prev: null, off: { x: 0, y: 0 }, lastFire: false, pressNext: false, world: null, ghosts: [], played: new Set() });
-    send({ t: 'join', name: slot === 'p1' ? base : `${base} 2`, slot });
-    audio.unlock();
-    updateButtons();
-  }
-  const updateButtons = () => { $('join').disabled = seats.some(s => s.slot === 'p1'); $('join2').disabled = seats.some(s => s.slot === 'p2'); };
+  const showToggles = () => { $('music').textContent = audio.musicOn ? '♪ Music on' : '♪ Music off'; $('sound').textContent = audio.sfxOn ? '🔊 Sound on' : '🔇 Sound off'; };
+  $('music').onclick = () => { audio.unlock(); audio.setMusic(!audio.musicOn); showToggles(); };
+  $('sound').onclick = () => { audio.unlock(); audio.setSfx(!audio.sfxOn); showToggles(); };
   $('join').onclick = () => join('p1');
   $('join2').onclick = () => join('p2');
   $('copy').onclick = async () => {
     try { await navigator.clipboard.writeText(location.href); $('copy').textContent = 'Copied!'; } catch { prompt('Copy this link:', location.href); }
     setTimeout(() => { $('copy').textContent = 'Copy invite link'; }, 1500);
   };
+  for (const b of document.querySelectorAll('header button')) b.addEventListener('click', () => b.blur());
+  showToggles();
 
-  function onMessage(m) {
-    if (m.t === 'arena') arena = m;
-    else if (m.t === 'joined') { const s = seats.find(s => s.slot === m.slot && s.id == null); if (s) s.id = m.id; }
-    else if (m.t === 'full') { seats.pop(); updateButtons(); statusEl.textContent = 'room is full (4 players)'; }
+  // ---- keyboard. Game keys never reach the page (no scrolling, no pressing a focused button,
+  // no changing a focused menu); typing your name is left alone.
+  const held = new Set(), down = new Set(), up = new Set(); // down/up: since the last input tick
+  const typing = e => e.target === $('name');
+  addEventListener('keydown', e => {
+    audio.unlock();
+    if (typing(e) || !GAME_KEYS.has(e.code)) return;
+    e.preventDefault();
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+    if (!held.has(e.code)) down.add(e.code);
+    held.add(e.code);
+  }, true);
+  addEventListener('keyup', e => {
+    if (typing(e) || !GAME_KEYS.has(e.code)) return;
+    e.preventDefault(); held.delete(e.code); up.add(e.code);
+  }, true);
+  addEventListener('blur', () => held.clear());
+  addEventListener('pointerdown', () => audio.unlock());
+
+  // ---- connection
+  let ws = null, latest = null, floor = [], rtt = 0, banner = null;
+  const seats = []; // local players: { slot, id, seq, pending, pred, prev, offset, ghosts, sounded, held, pressLater }
+  const snaps = [];
+  let clockOffset = null, delay = 100, gap = TICK_MS;
+  const send = m => { if (ws?.readyState === 1) ws.send(JSON.stringify(m)); };
+  function connect() {
+    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?${new URLSearchParams({ room, arena: $('arena').value, bots: $('bots').value })}`);
+    ws.onopen = () => {
+      $('status').textContent = `room "${room}"`;
+      const slots = seats.splice(0).map(s => s.slot);
+      snaps.length = 0; latest = null; clockOffset = null;
+      slots.forEach(join);
+    };
+    ws.onclose = () => { $('status').textContent = 'disconnected - reconnecting…'; setTimeout(connect, 1500); };
+    ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } receive(m); };
+  }
+  function join(slot) {
+    if (seats.some(s => s.slot === slot)) return;
+    const name = $('name').value.trim() || 'Bomber';
+    try { localStorage.setItem('sf-name', name); } catch { /* private mode */ }
+    seats.push({ slot, id: null, seq: 0, pending: [], pred: null, prev: null, offset: { x: 0, y: 0 }, ghosts: [], sounded: new Set(), held: false, pressLater: false });
+    send({ t: 'join', name: slot === 'p1' ? name : `${name} 2`, slot });
+    audio.unlock();
+    $('join').disabled = seats.some(s => s.slot === 'p1'); $('join2').disabled = seats.some(s => s.slot === 'p2');
+  }
+  function receive(m) {
+    if (m.t === 's') return update(decode(m));
+    if (m.t === 'floor') floor = m.floor;
+    else if (m.t === 'joined') { const s = seats.find(x => x.slot === m.slot && x.id == null); if (s) s.id = m.id; }
+    else if (m.t === 'full') { seats.pop(); $('status').textContent = 'the room is full (4 players)'; $('join').disabled = seats.some(s => s.slot === 'p1'); $('join2').disabled = seats.some(s => s.slot === 'p2'); }
     else if (m.t === 'pong') rtt = performance.now() - m.c;
-    else if (m.t === 's') onSnapshot(decode(m));
   }
 
-  function onSnapshot(s) {
-    if (latest && s.tick <= latest.tick) return; // never step back in time (WebSocket keeps order; this is insurance)
+  // ---- a server update
+  function update(s) {
+    if (latest && s.tick <= latest.tick) return;
     const now = performance.now();
-    if (!latest || latest.arena !== s.arena) $('arena').value = s.arena; // the header shows what the room actually plays
-    if (snaps.length) snapGap = Math.max(1, Math.min(10, s.tick - snaps.at(-1).tick)) * FRAME_MS;
+    if (latest) gap = Math.max(1, Math.min(10, s.tick - latest.tick)) * TICK_MS;
+    if (!latest || latest.arena !== s.arena) $('arena').value = s.arena;
     latest = s;
-    snaps.push(s); if (snaps.length > 30) snaps.shift();
-    offsets.push(now - s.tick * FRAME_MS); if (offsets.length > JITTER_WINDOW) offsets.shift();
-    const best = Math.min(...offsets);
+    snaps.push(s); if (snaps.length > 40) snaps.shift();
+    // others: drawn one update plus the jitter seen lately in the past
+    const arrival = now - s.tick * TICK_MS, recent = snaps.slice(-48).map(x => x.arrival ?? arrival);
+    s.arrival = arrival; recent.push(arrival);
+    const best = Math.min(...recent), worst = Math.max(...recent);
     clockOffset = clockOffset == null ? best : clockOffset + (best - clockOffset) * 0.1;
-    const late = Math.max(...offsets) - best;
-    const want = Math.max(INTERP_MIN, Math.min(INTERP_MAX, snapGap + late + INTERP_MARGIN));
-    interpMs += (want - interpMs) * (want > interpMs ? 0.5 : 0.02); // back off fast, tighten slowly
-    for (const ev of s.ev) onEvent(ev, s);
-    // prediction: the authoritative position at the acknowledged input + inputs not yet applied
+    const want = Math.max(DELAY.min, Math.min(DELAY.max, gap + (worst - best) + DELAY.margin));
+    delay += (want - delay) * (want > delay ? 0.5 : 0.02);
+    for (const ev of s.ev) event(ev, s);
+    // you: the server's position at the last input it applied, plus your inputs since
     for (const seat of seats) {
-      const p = seat.id != null && s.playerById.get(seat.id);
-      if (!p || !p.fighting || !p.alive) { seat.pred = seat.prev = null; continue; }
+      const me = seat.id != null && s.byId.get(seat.id);
       const ack = s.ack[seat.id] ?? 0;
       seat.pending = seat.pending.filter(f => f.seq > ack);
-      for (const q of seat.played) if (q <= ack) seat.played.delete(q); // the server has reported those frames' bombs
-      // replay the unacknowledged inputs on the server's state: movement and your own bombs
-      const pred = { x: p.x, y: p.y, dir: p.dir, speed: p.speed, kick: p.kick, laid: p.laid, bombs: p.bombs, canThrow: p.canThrow, actionHeld: p.actionHeld };
-      seat.world = new PredictedWorld(s); seat.ghosts = [];
-      if (s.phase === 'play') for (const f of seat.pending) { const c = seat.world.step(pred, f.bits); if (c) seat.ghosts.push(c); }
+      for (const q of seat.sounded) if (q <= ack) seat.sounded.delete(q);
+      if (!me || !me.fighting || !me.alive || s.phase !== 'play') { seat.pred = seat.prev = null; seat.ghosts = []; continue; }
+      const pred = new Prediction(s, me), ghosts = [];
+      for (const f of seat.pending) { const c = pred.step(f.keys); if (c) ghosts.push(c); }
       if (seat.pred) {
-        const dx = pred.x - seat.pred.x, dy = pred.y - seat.pred.y;
-        if (dx || dy) { predStats.corrections++; predStats.max = Math.max(predStats.max, Math.abs(dx) + Math.abs(dy)); if (predStats.log.length < 30) predStats.log.push({ ack: s.ack[seat.id], tick: s.tick, srv: [p.x, p.y], old: [seat.pred.x, seat.pred.y], now: [pred.x, pred.y], pending: seat.pending.map(f => f.seq + ':' + f.bits).join(' ') }); }
-        if (Math.abs(dx) + Math.abs(dy) > SNAP_DIST) { seat.off = { x: 0, y: 0 }; seat.prev = null; }
-        else { seat.off.x -= dx; seat.off.y -= dy; if (seat.prev) { seat.prev.x += dx; seat.prev.y += dy; } }
+        const dx = pred.p.x - seat.pred.p.x, dy = pred.p.y - seat.pred.p.y;
+        if (dx || dy) { stats.corrections++; stats.largest = Math.max(stats.largest, Math.abs(dx) + Math.abs(dy)); }
+        if (Math.abs(dx) + Math.abs(dy) > JUMP) { seat.offset = { x: 0, y: 0 }; seat.prev = null; }
+        else { seat.offset.x -= dx; seat.offset.y -= dy; if (seat.prev) { seat.prev.x += dx; seat.prev.y += dy; } }
       }
-      seat.pred = pred;
+      seat.pred = pred; seat.ghosts = ghosts;
     }
   }
+  const stats = { corrections: 0, largest: 0 };
 
-  const nameOf = (s, id) => s.playerById.get(id)?.name ?? '?';
-  function onEvent(ev, s) {
+  const nameOf = (s, id) => s.byId.get(id)?.name ?? '?';
+  function event(ev, s) {
     const mine = seats.some(x => x.id === ev.id);
     switch (ev.type) {
-      case 'lay': if (!(ev.seq && seats.some(x => x.id === ev.id && x.played.has(ev.seq)))) audio.lay(); break; // own bombs already sounded
-      case 'boom': fx.boom(ev.x, ev.y); audio.boom(); break;
-      case 'crate': fx.crate(ev.x, ev.y); audio.crate(); break;
-      case 'hit': { const p = s.playerById.get(ev.id); if (p) fx.text(p.x, p.y, ev.lives > 0 ? `-1 ♥` : 'OUT!', '#ff8a80'); audio.hit(); break; }
-      case 'out': fx.ring(ev.x, ev.y, '#ff5252'); audio.out(); break;
-      case 'pickup': { const p = s.playerById.get(ev.id); if (p) fx.text(p.x, p.y, `+${ev.kind}`, '#ffe082'); if (mine) audio.pickup(); break; }
-      case 'kick': audio.kick(); break;
-      case 'throw': audio.throw(); break;
-      case 'land': audio.land(); break;
-      case 'teleport': { const p = s.playerById.get(ev.id); if (p) fx.ring(p.x, p.y, '#4dd0e1'); audio.teleport(); break; }
-      case 'fire': audio.fire(); break;
-      case 'fill': fx.fill(ev.i, ev.j); audio.fill(); break;
-      case 'heat': audio.heat(); break;
-      case 'join': if (ev.id > 0 && s.phase !== 'waiting') banner = { text: `${ev.name} joined - plays from the next heat`, until: performance.now() + 2000, small: true }; break;
-      case 'leave': if (ev.id > 0) banner = { text: `${ev.name} left`, until: performance.now() + 2500, small: true }; break;
-      case 'result': if (ev.winner != null) audio.win(); break;
-      case 'match': banner = { text: ev.winner != null ? `${nameOf(s, ev.winner)} wins the match!` : 'Match drawn', until: performance.now() + 4000 }; break;
+      case 'lay': if (!(ev.seq && seats.some(x => x.id === ev.id && x.sounded.has(ev.seq)))) audio.play('lay'); break; // yours already sounded
+      case 'boom': view.fx.boom(ev.x, ev.y); audio.play('boom'); break;
+      case 'crate': view.fx.crate(ev.x, ev.y); audio.play('crate'); break;
+      case 'hit': view.fx.text(ev.x, ev.y, ev.lives > 0 ? '-1 ♥' : 'OUT!', '#ff8a80'); audio.play('hit'); break;
+      case 'out': view.fx.ring(ev.x, ev.y, '#ff5252'); audio.play('out'); break;
+      case 'powerup': view.fx.text(ev.x, ev.y, '+' + ev.kind, '#ffe082'); if (mine) audio.play('powerup'); break;
+      case 'kick': audio.play('kick'); break;
+      case 'throw': audio.play('throw'); break;
+      case 'land': audio.play('land'); break;
+      case 'teleport': view.fx.ring(ev.x, ev.y, '#4dd0e1'); audio.play('teleport'); break;
+      case 'fire': audio.play('fire'); break;
+      case 'wall': view.fx.wall(ev.i, ev.j); audio.play('wall'); break;
+      case 'heat': audio.play('heat'); break;
+      case 'result': if (ev.winner != null) audio.play('win'); break;
+      case 'join': if (!ev.bot && s.phase !== 'waiting' && s.byId.get(ev.id)?.fighting === false) banner = { text: `${ev.name} joined - plays from the next heat`, until: performance.now() + 2500 }; break;
+      case 'leave': if (!ev.bot) banner = { text: `${ev.name} left`, until: performance.now() + 2500 }; break;
+      case 'match': banner = { text: ev.winner != null ? `${nameOf(s, ev.winner)} wins the match!` : 'The match is a draw', until: performance.now() + 4000 }; break;
     }
   }
 
-  // ---- input tick at the simulation rate (a timer, so input keeps flowing in background tabs)
-  function localTick() {
+  // ---- input, sampled at the game's tick rate on a timer (keeps going in background tabs)
+  const auto = params.get('autoplay') ? autoplayer(+params.get('autoplay') || 1) : null; // for automated tests
+  let tickAt = performance.now();
+  function inputTick() {
     for (const seat of seats) {
       if (seat.id == null) continue;
-      const k = KEYS[seat.slot], on = codes => codes.some(c => keys.has(c) || tapped.has(c));
-      // bomb button released and pressed again within one frame: send the release now and
-      // the press next frame, or the server would see one long press
-      let fire = on(k.action);
-      if (seat.pressNext) { fire = true; seat.pressNext = false; }
-      else if (fire && seat.lastFire && k.action.some(c => released.has(c))) { fire = false; seat.pressNext = true; }
-      seat.lastFire = fire;
-      const bits = (on(k.up) ? 1 : 0) | (on(k.down) ? 2 : 0) | (on(k.left) ? 4 : 0) | (on(k.right) ? 8 : 0) | (fire ? 16 : 0);
+      const k = KEYS[seat.slot], on = bit => k[bit].some(c => held.has(c) || down.has(c));
+      let keys = auto ? auto() : (on(UP) ? UP : 0) | (on(DOWN) ? DOWN : 0) | (on(LEFT) ? LEFT : 0) | (on(RIGHT) ? RIGHT : 0);
+      // the bomb key: released and pressed again within one tick -> release now, press next tick
+      let bomb = auto ? !!(keys & BOMB_KEY) : on(BOMB_KEY);
+      if (seat.pressLater) { bomb = true; seat.pressLater = false; }
+      else if (bomb && seat.held && k[BOMB_KEY].some(c => up.has(c))) { bomb = false; seat.pressLater = true; }
+      seat.held = bomb;
+      keys = (keys & 15) | (bomb ? BOMB_KEY : 0);
       const seq = ++seat.seq;
-      seat.pending.push({ seq, bits, wire: [seq, bits] });
-      if (seat.pending.length > 120) seat.pending.shift();
-      send({ t: 'in', id: seat.id, f: seat.pending.slice(-SEND_REDUNDANCY).map(f => f.wire) });
-      if (seat.pred && latest?.phase === 'play') {
-        seat.prev = { x: seat.pred.x, y: seat.pred.y };
-        const c = seat.world.step(seat.pred, bits);
-        if (c) { seat.ghosts.push(c); seat.played.add(seq); audio.lay(); } // your bomb appears (and sounds) at once
+      seat.pending.push({ seq, keys });
+      if (seat.pending.length > 240) seat.pending.shift();
+      send({ t: 'in', id: seat.id, f: seat.pending.slice(-RESEND).map(f => [f.seq, f.keys]) });
+      if (seat.pred) {
+        seat.prev = { x: seat.pred.p.x, y: seat.pred.p.y };
+        const c = seat.pred.step(keys);
+        if (c) { seat.ghosts.push(c); seat.sounded.add(seq); audio.play('lay'); } // your bomb shows and sounds at once
       }
     }
-    tapped.clear(); released.clear();
+    down.clear(); up.clear();
   }
   setInterval(() => {
     const now = performance.now();
-    for (let n = 0; now - lastTick >= FRAME_MS && n < 4; n++) { localTick(); lastTick += FRAME_MS; }
-    if (now - lastTick > 500) lastTick = now;
+    for (let n = 0; now - tickAt >= TICK_MS && n < 5; n++) { inputTick(); tickAt += TICK_MS; }
+    if (now - tickAt > 500) tickAt = now;
   }, 4);
   setInterval(() => send({ t: 'ping', c: performance.now() }), 2000);
 
-  // ---- render: others interpolated between snapshots, own players predicted
-  function interpolated() {
+  // ---- drawing
+  function others() {
     if (!snaps.length || clockOffset == null) return null;
-    const rt = (performance.now() - clockOffset - interpMs) / FRAME_MS;
-    // ran past the newest update (it's late): others would freeze then jump, so widen the buffer now
-    if (rt > snaps.at(-1).tick) interpMs = Math.min(INTERP_MAX, interpMs + 1);
+    const t = (performance.now() - clockOffset - delay) / TICK_MS;
+    if (t > snaps.at(-1).tick) delay = Math.min(DELAY.max, delay + 1); // ran out of updates: draw a little further back
     let a = snaps[0], b = snaps.at(-1);
-    for (let i = snaps.length - 1; i > 0; i--) if (snaps[i - 1].tick <= rt) { a = snaps[i - 1]; b = snaps[i]; break; }
-    const t = b.tick > a.tick ? Math.max(0, Math.min(1, (rt - a.tick) / (b.tick - a.tick))) : 1;
-    const blend = (listA, listB) => {
-      const byId = new Map(listA.map(o => [o.id, o]));
-      return listB.map(o => { const p = byId.get(o.id); if (!p || Math.abs(p.x - o.x) + Math.abs(p.y - o.y) > SNAP_DIST * 2) return { ...o, moving: false }; return { ...o, x: lerp(p.x, o.x, t), y: lerp(p.y, o.y, t), moving: p.x !== o.x || p.y !== o.y }; });
-    };
+    for (let i = snaps.length - 1; i > 0; i--) if (snaps[i - 1].tick <= t) { a = snaps[i - 1]; b = snaps[i]; break; }
+    const k = b.tick > a.tick ? Math.max(0, Math.min(1, (t - a.tick) / (b.tick - a.tick))) : 1;
+    const blend = (as, bs) => { const m = new Map(as.map(o => [o.id, o])); return bs.map(o => { const p = m.get(o.id); return !p || Math.abs(p.x - o.x) + Math.abs(p.y - o.y) > JUMP ? { ...o, moving: false } : { ...o, x: lerp(p.x, o.x, k), y: lerp(p.y, o.y, k), moving: p.x !== o.x || p.y !== o.y }; }); };
     return { players: blend(a.players, b.players), bombs: blend(a.bombs, b.bombs) };
   }
-
   function frame() {
     requestAnimationFrame(frame);
-    const it = interpolated();
-    const mine = new Set(seats.map(s => s.id).filter(id => id != null));
-    const alpha = Math.max(0, Math.min(1, (performance.now() - lastTick) / FRAME_MS));
-    const players = (it?.players || []).map(p => {
+    const o = others(), alpha = Math.max(0, Math.min(1, (performance.now() - tickAt) / TICK_MS));
+    const mine = new Set(seats.map(s => s.id));
+    const players = (o?.players || []).map(p => {
       const seat = seats.find(s => s.id === p.id);
       if (!seat?.pred) return p;
-      seat.off.x *= SMOOTH; seat.off.y *= SMOOTH;
-      const from = seat.prev || seat.pred;
-      return { ...p, x: lerp(from.x, seat.pred.x, alpha) + seat.off.x, y: lerp(from.y, seat.pred.y, alpha) + seat.off.y, dir: seat.pred.dir, moving: from.x !== seat.pred.x || from.y !== seat.pred.y };
+      seat.offset.x *= SMOOTH; seat.offset.y *= SMOOTH;
+      const from = seat.prev || seat.pred.p, to = seat.pred.p;
+      return { ...p, x: lerp(from.x, to.x, alpha) + seat.offset.x, y: lerp(from.y, to.y, alpha) + seat.offset.y, dir: to.dir, moving: from.x !== to.x || from.y !== to.y };
     });
-    // a carried bomb follows its (possibly predicted) carrier
-    const bombs = (it?.bombs || latest?.bombs || []).filter(b => b.state !== 3);
-    // your own bombs the server hasn't confirmed yet
-    for (const seat of seats) for (const [i, j] of seat.ghosts || []) if (latest && latest.gridArr[i * ROWS + j] !== 3) bombs.push({ id: `ghost${i},${j}`, x: i * CELL, y: j * CELL, count: 0, state: 0 });
-    draw({
-      grid: latest?.gridArr, floor: arena?.floor || [], fire: latest?.fire, burning: latest?.burning || [], pickups: latest?.pickups || [],
-      flames: latest?.flames || [], bombs, players, phase: latest?.phase, timer: latest?.timer, heat: latest?.heat || 0, arena: latest?.arena,
-      clock: latest?.clock, winner: latest?.winner, matchWinner: latest?.matchWinner, rtt, mine, seated: seats.length > 0, banner,
-    });
+    const bombs = (o?.bombs || []).filter(b => b.state !== 'h');
+    for (const seat of seats) for (const [i, j] of seat.ghosts) if (latest && latest.cells[i * ROWS + j] !== 3) bombs.push({ id: 'g' + i + ',' + j, x: i * CELL, y: j * CELL, count: 0, state: 's' });
+    view.draw({ s: latest, floor, players, bombs, mine, rtt, banner, seated: seats.length > 0 });
   }
 
-  updateButtons();
   connect();
   frame();
-  window.__sf = { seats, get latest() { return latest; }, get interpMs() { return interpMs; }, predStats }; // for automated tests
+  window.__sf = { seats, stats, get latest() { return latest; }, get delay() { return delay; } }; // for automated tests
+}
+
+// Human-like random play for automated soak tests (?autoplay=seed): holds a direction for a
+// while, turns, stops now and then, taps the bomb key.
+function autoplayer(seed) {
+  let s = seed >>> 0 || 1, dir = RIGHT, left = 0, bomb = 0;
+  const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  return () => {
+    if (--left <= 0) { dir = [UP, DOWN, LEFT, RIGHT, UP, DOWN, LEFT, RIGHT, 0][Math.floor(r() * 9)]; left = 6 + Math.floor(r() * 30); }
+    if (bomb > 0) bomb--; else if (r() < 0.03) bomb = 1 + Math.floor(r() * 3);
+    return dir | (bomb ? BOMB_KEY : 0);
+  };
 }

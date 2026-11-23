@@ -1,6 +1,5 @@
-// A TCP proxy that delays traffic both ways (latency + jitter), for testing the game under
-// realistic network conditions. Like real TCP it never reorders: each direction is one queue
-// drained in order by a single timer.
+// A TCP proxy that delays traffic both ways (latency + jitter). Like real TCP it never
+// reorders: each direction is one queue drained in order.
 import net from 'node:net';
 
 export function lagProxy({ target, latency = 60, jitter = 15 }) {
@@ -25,8 +24,5 @@ export function lagProxy({ target, latency = 60, jitter = 15 }) {
     };
     pipe(client, upstream); pipe(upstream, client);
   });
-  return new Promise(resolve => server.listen(0, () => resolve({
-    port: server.address().port,
-    close: () => { server.close(); for (const s of sockets) s.destroy(); },
-  })));
+  return new Promise(resolve => server.listen(0, () => resolve({ port: server.address().port, close: () => { server.close(); for (const s of sockets) s.destroy(); } })));
 }
