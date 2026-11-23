@@ -26,3 +26,11 @@
   - New tests: a TCP lag proxy + `npm run pvp` (real browsers at 50-400 ms round trip, zero movement corrections), a prediction lockstep test with delay, and a 4-player virtual-time network test.
   - Found and fixed a reordering bug in the test proxy that had made high-latency runs look worse than they are.
   - 31 tests; e2e, pvp, and playtest all green.
+- 2026-11-23: Short Fuse lag fix and extras.
+  - Reproduced the "laggy, desynced" report: with continuous movement and a browser clock 0.3% fast, the input buffer filled. Input lag went 120 -> 320 ms, and overflow dropped moving frames, which snapped positions.
+  - Fix: the server catches up by applying two frames in a tick, plus a real-time frame budget (+3%) against speed hacks.
+  - Result: zero corrections over 10 simulated minutes at +/-1% clock skew and 50-400 ms round trip; input lag = round trip.
+  - Late updates from other players widen the interpolation buffer immediately.
+  - Added an original chiptune soundtrack, Music/Sound toggles, and a skin loader (`SKIN_DIR`) for the owner's own art/sound/music files (not committed).
+  - Declined to copy or imitate the original game's art, music or look.
+  - 32 tests; e2e, pvp and playtest green.

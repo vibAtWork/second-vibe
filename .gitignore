@@ -1,1 +1,4 @@
 node_modules/
+
+# Short Fuse: your own skin files stay local
+projects/short-fuse/skin/

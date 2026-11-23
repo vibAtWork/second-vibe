@@ -98,14 +98,21 @@ test('room: only idle frames are trimmed', () => {
   room.tick(); assert.equal(seat.lastSeq, 2);
 });
 
-test('room: a quick bomb tap survives a dropped frame', () => {
-  const { room, mk } = fakeRoom();
+test('room: a client cannot send faster than real time (speed hack), honest clock drift is fine', () => {
+  const { room, mk, advance } = fakeRoom({ arena: 'madness' });
   const a = mk(), b = mk();
   room.handle(a, { t: 'join', name: 'A' }); room.handle(b, { t: 'join', name: 'B' });
-  const seat = room.seats.get(a.id);
-  room.handle(a, { t: 'in', id: a.id, f: [[1, 16], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0]] });
-  assert.equal(seat.queue.length, MAX_QUEUE);
-  assert.equal(seat.queue[0].bits & 16, 16, 'the press moved onto the next frame');
+  for (let i = 0; i < READY_TICKS + 2; i++) { room.tick(); advance(1000 / 24); }
+  const seat = room.seats.get(a.id), before = seat.stats.applied;
+  let seq = 0;
+  // 10 seconds of a client sending frames twice as fast as real time
+  for (let t = 0; t < 240; t++) {
+    room.handle(a, { t: 'in', id: a.id, f: [[++seq, BIT.right], [++seq, BIT.right]] });
+    room.tick(); advance(1000 / 24);
+  }
+  const applied = seat.stats.applied - before;
+  assert.ok(applied <= 240 * 1.03 + 13, `applied ${applied} frames in 240 ticks (budget: real time + 3%)`);
+  assert.ok(seat.stats.overBudget > 0);
 });
 
 // The browser's prediction (movement + its own bombs, rolled back to every update) must agree

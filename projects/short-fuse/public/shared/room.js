@@ -1,26 +1,23 @@
 // Authoritative room: one Game per invite link, ticked by the server.
-// Cheat protection: the server runs the game, clients only send buttons. Every message
-// is validated, one input frame is applied per tick (sending faster gains nothing),
-// connections are rate-limited, and a seat whose inputs stop arriving goes idle.
+// Cheat protection: the server runs the game, clients only send buttons. Every message is
+// validated, a seat can't send more input frames than real time allows (+3% for clock
+// drift), connections are rate-limited, and a seat whose inputs stop arriving goes idle.
+//
+// Netcode: every input frame is applied exactly once, in order, so the player's own
+// prediction never disagrees with the server. A late frame isn't guessed (the player stands
+// still that tick); a backlog (a fast clock, a burst after a lag spike) is caught up by
+// applying two frames in one tick - never by dropping any.
 import { Game, TICK_HZ } from './sim.js';
 
 const COLORS = ['#4fc3f7', '#ffd54f', '#ef5350', '#e0e0e0'];
 export const MAX_PLAYERS = 4;
 export const MAX_SEATS_PER_CONN = 2;           // a second player on the same keyboard
-export const MAX_QUEUE = 6;                    // more queued than this is dropped (sending faster gains nothing)
+export const MAX_QUEUE = 24;                   // a second of frames at most; more is a broken or hostile client
 export const STARVE_TICKS = Math.round(TICK_HZ * 1.5); // 1.5 s without input -> idle
-export const TRIM_WINDOW = TICK_HZ;             // check every second whether a seat's input buffer can shrink
+export const TRIM_WINDOW = TICK_HZ;             // check every second whether a seat's input buffer is longer than it needs to be
+export const FRAME_BUDGET = { burst: 12, perSec: TICK_HZ * 1.03 }; // input frames a seat may send
 const RATE = { capacity: 100, perSec: 60, kickAfterDrops: 600 };
 const IDLE = { bits: 0 };
-
-// Drop a seat's oldest queued frame. A bomb-button press or release in it is kept: if the
-// game would otherwise never see it (the next frame goes back to the state the game last
-// saw), the next frame takes the dropped frame's button state.
-function dropOldest(seat) {
-  const d = seat.queue.shift(), next = seat.queue[0];
-  if (next && (d.bits & 16) !== seat.button && (next.bits & 16) === seat.button) next.bits = (next.bits & 15) | (d.bits & 16);
-  seat.last = d; seat.lastSeq = d.seq;
-}
 
 // Wire frame [seq, bits] -> validated input, or null.
 export function parseFrame(fr) {
@@ -90,7 +87,7 @@ export class Room {
     const id = this.nextId++;
     const used = new Set(this.game.humans().map(p => p.color));
     const color = COLORS.find(c => !used.has(c)) || COLORS[id % COLORS.length];
-    this.seats.set(id, { id, conn, queue: [], last: IDLE, lastSeq: 0, starved: 0, minQ: Infinity, window: 0, button: 0, trim: false, stats: { overflow: 0, trimmed: 0, late: 0 } }); // button: the bomb-button state the game last saw
+    this.seats.set(id, { id, conn, queue: [], last: IDLE, lastSeq: 0, starved: 0, minQ: Infinity, window: 0, button: 0, catchUp: 0, budget: { tokens: FRAME_BUDGET.burst, at: this.now() }, stats: { applied: 0, caughtUp: 0, late: 0, overBudget: 0 } }); // button: the bomb-button state the game last saw
     conn.seatIds.push(id);
     // two players with the same name get a number, so everyone can tell who's who
     const taken = new Set([...this.game.players.values()].map(p => p.name));
@@ -105,42 +102,40 @@ export class Room {
   input(conn, msg) {
     const seat = this.seats.get(msg.id);
     if (!seat || seat.conn !== conn || !Array.isArray(msg.f) || msg.f.length > 8) return;
+    const b = seat.budget, t = this.now();
+    b.tokens = Math.min(FRAME_BUDGET.burst, b.tokens + (t - b.at) / 1000 * FRAME_BUDGET.perSec); b.at = t;
     for (const fr of msg.f) {
       const f = parseFrame(fr);
       const newest = seat.queue.length ? seat.queue.at(-1).seq : seat.lastSeq;
-      if (f && f.seq > newest) seat.queue.push(f);
+      if (!f || f.seq <= newest) continue;      // a resent copy
+      if (b.tokens < 1) { seat.stats.overBudget++; break; } // faster than real time: wait (it's resent with the next message)
+      b.tokens--; seat.queue.push(f);
     }
-    while (seat.queue.length > MAX_QUEUE) { dropOldest(seat); seat.stats.overflow++; } // too far ahead: sending faster gains nothing
+    if (seat.queue.length > MAX_QUEUE) conn.kick?.(); // can't happen within the budget: a broken or hostile client
   }
 
   tick() {
-    const g = this.game, inputs = new Map(), applied = new Map(); // seat id -> seq of the frame used this tick
+    const g = this.game, inputs = new Map();
     for (const seat of this.seats.values()) {
-      // The queue is only a jitter buffer: if it never ran low during the last second,
-      // it holds more than jitter needs, and every extra frame is a tick of input delay.
-      // Only idle frames (no movement, bomb button unchanged) are trimmed: dropping one is
-      // invisible to your prediction, so trimming never makes your screen jump.
+      // The queue is a jitter buffer. If it never ran below 2 during the last second it is
+      // longer than the jitter needs (every extra frame is a tick of input delay): catch up
+      // by applying two frames in a tick, spread over the next second.
       seat.minQ = Math.min(seat.minQ, seat.queue.length);
-      if (++seat.window >= TRIM_WINDOW) { if (seat.minQ >= 2) seat.trim = true; seat.minQ = Infinity; seat.window = 0; }
-      if (seat.trim && seat.queue.length >= 2) {
-        const head = seat.queue[0];
-        if (!(head.bits & 15) && (head.bits & 16) === seat.button) { dropOldest(seat); seat.trim = false; seat.stats.trimmed++; }
-      } else if (seat.queue.length < 2) seat.trim = false;
-      const next = seat.queue.shift();
-      if (next) { seat.last = next; seat.lastSeq = next.seq; seat.starved = 0; applied.set(seat.id, next.seq); } else { seat.starved++; seat.stats.late++; }
+      if (++seat.window >= TRIM_WINDOW) { seat.catchUp = seat.minQ >= 2 ? seat.minQ - 1 : 0; seat.minQ = Infinity; seat.window = 0; }
+      const take = seat.queue.length >= 2 && seat.catchUp > 0 ? 2 : seat.queue.length ? 1 : 0;
+      if (take === 2) { seat.catchUp--; seat.stats.caughtUp++; }
+      const frames = seat.queue.splice(0, take);
+      if (frames.length) { seat.last = frames.at(-1); seat.lastSeq = seat.last.seq; seat.starved = 0; seat.stats.applied += frames.length; }
+      else { seat.starved++; seat.stats.late++; }
       // A late frame: don't guess. Stand still this tick (bomb button unchanged) and apply the
-      // frame when it arrives - your screen and the server never disagree, and the buffer
-      // grows to absorb the jitter. After 1.5 s without input the seat goes idle.
-      const input = next || (seat.starved > STARVE_TICKS ? IDLE : { bits: seat.button });
-      inputs.set(seat.id, input); seat.button = input.bits & 16;
+      // frame when it arrives. After 1.5 s without input the seat goes idle.
+      const input = frames.length ? { frames } : { frames: [seat.starved > STARVE_TICKS ? IDLE : { bits: seat.button }] };
+      inputs.set(seat.id, input); seat.button = input.frames.at(-1).bits & 16;
     }
     g.step(inputs);
     if (g.layoutId !== this.layout) { this.layout = g.layoutId; const m = g.arenaMsg(); for (const c of this.conns) c.send(m); }
     const snap = g.snapshot();
     snap.ev = g.drainEvents();
-    // tag each bomb laid with the input frame that laid it, so the layer's browser (which
-    // shows its own bombs at once) can skip the ones it already showed; 0 = no fresh frame
-    for (const ev of snap.ev) if (ev.type === 'lay' && this.seats.has(ev.id)) ev.seq = applied.get(ev.id) ?? 0;
     let body = null; // the snapshot is the same for everyone: stringify it once, prepend each connection's ack
     for (const c of this.conns) {
       const ack = {};

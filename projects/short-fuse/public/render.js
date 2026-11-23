@@ -6,8 +6,15 @@ export const BOARD_W = COLS * CELL, BOARD_H = ROWS * CELL, HUD_H = 60;
 const PAIR_COLORS = ['#4dd0e1', '#f06292'];
 const PICKUP_COLORS = { flame: '#ff7043', speed: '#ffee58', bomb: '#90a4ae', kick: '#81c784', throw: '#ba68c8' };
 
-export function createRenderer(canvas) {
+export function createRenderer(canvas, skin = {}) {
   const ctx = canvas.getContext('2d');
+  // a skin image (see skin.js) replaces the built-in drawing: one cell square, centred, rotated
+  const img = (name, x, y, rot = 0, alpha = 1) => {
+    const im = skin.images?.[name]; if (!im) return false; // the skin may arrive after the first frames
+    ctx.save(); ctx.translate(x, y); if (rot) ctx.rotate(rot); ctx.globalAlpha *= alpha;
+    ctx.drawImage(im, -CELL / 2, -CELL / 2, CELL, CELL); ctx.restore(); return true;
+  };
+  const ROT = { 1: 0, 2: Math.PI, 3: -Math.PI / 2, 4: Math.PI / 2 };
   const S = canvas.width / BOARD_W; // pixels per world unit
   const effects = [];
   let shake = 0;
@@ -21,6 +28,7 @@ export function createRenderer(canvas) {
 
   const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
   function wall(x, y) {
+    if (img('wall', x + CELL / 2, y + CELL / 2)) return;
     const g = ctx.createLinearGradient(x, y, x, y + CELL);
     g.addColorStop(0, '#7b8794'); g.addColorStop(1, '#4a5561');
     ctx.fillStyle = g; rr(x + 0.5, y + 0.5, CELL - 1, CELL - 1, 3); ctx.fill();
@@ -29,6 +37,7 @@ export function createRenderer(canvas) {
     for (const [a, b] of [[5, 6], [CELL - 5, 6], [5, CELL - 5], [CELL - 5, CELL - 5]]) { ctx.beginPath(); ctx.arc(x + a, y + b, 1.4, 0, 7); ctx.fill(); }
   }
   function crate(x, y, burn) {
+    if (img('crate', x + CELL / 2, y + CELL / 2, 0, burn >= 0 ? 1 - burn / FLAME_TICKS * 0.8 : 1)) { if (burn >= 0) { ctx.fillStyle = burn % 4 < 2 ? '#ff8a3d55' : '#d9532c55'; ctx.fillRect(x, y, CELL, CELL); } return; }
     ctx.save();
     if (burn >= 0) { ctx.globalAlpha = 1 - burn / FLAME_TICKS * 0.8; }
     ctx.fillStyle = burn >= 0 ? (burn % 4 < 2 ? '#ff8a3d' : '#d9532c') : '#b9803f';
@@ -39,6 +48,7 @@ export function createRenderer(canvas) {
     ctx.restore();
   }
   function pickup(x, y, kind, t) {
+    if (img('pickup' + kind[0].toUpperCase() + kind.slice(1), x, y)) return;
     const bob = Math.sin(t / 200 + x) * 1.2, cx = x, cy = y + bob;
     ctx.fillStyle = '#0008'; ctx.beginPath(); ctx.ellipse(cx, y + 11, 8, 3, 0, 0, 7); ctx.fill();
     ctx.fillStyle = PICKUP_COLORS[kind]; rr(cx - 10, cy - 10, 20, 20, 5); ctx.fill();
@@ -55,6 +65,7 @@ export function createRenderer(canvas) {
     ctx.fillStyle = '#0007'; ctx.beginPath(); ctx.ellipse(x, y + 10, 9 - lift / 4, 3, 0, 0, 7); ctx.fill();
     const pulse = 1 + Math.max(0, Math.sin(t / (count > FUSE - 18 ? 40 : 110))) * 0.07;
     const r = 10 * pulse, by = y - lift;
+    if (img('bomb', x, by, 0)) { if (count > FUSE - 18) { ctx.fillStyle = `rgba(255,80,40,${0.2 + 0.2 * Math.sin(t / 30)})`; ctx.beginPath(); ctx.arc(x, by, r, 0, 7); ctx.fill(); } return; }
     const g = ctx.createRadialGradient(x - 3, by - 4, 1, x, by, r);
     g.addColorStop(0, '#6b7280'); g.addColorStop(1, '#111318');
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, by, r, 0, 7); ctx.fill();
@@ -64,6 +75,7 @@ export function createRenderer(canvas) {
   }
   function flame(x, y, dir, end, life) {
     const a = Math.min(1, life / 6), w = 9 + 3 * Math.sin(life), vertical = dir <= 2;
+    if (img(end ? 'flameEnd' : 'flameArm', x, y, ROT[dir], a)) return;
     const len = end ? 12 : 15, ox = dir === 3 ? 3 : dir === 4 ? -3 : 0, oy = dir === 1 ? 3 : dir === 2 ? -3 : 0;
     ctx.save(); ctx.globalAlpha = a;
     const draw = (half, color) => { ctx.fillStyle = color; if (vertical) rr(x - half + ox, y - len + oy, half * 2, len * 2, half); else rr(x - len + ox, y - half + oy, len * 2, half * 2, half); ctx.fill(); };
@@ -73,6 +85,7 @@ export function createRenderer(canvas) {
   }
   function centreFlame(x, y, life) {
     const a = Math.min(1, life / 6), r = 13 + 2 * Math.sin(life);
+    if (img('flameCentre', x, y, 0, a)) return;
     ctx.save(); ctx.globalAlpha = a;
     for (const [rad, c] of [[r, '#ff6d00'], [r * 0.7, '#ffca28'], [r * 0.35, '#fffde7']]) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, rad, 0, 7); ctx.fill(); }
     ctx.restore();
@@ -81,6 +94,7 @@ export function createRenderer(canvas) {
     const { x, y, color, dir } = p;
     if (p.inv && Math.floor(t / 125) % 3 === 0) return; // blink while invincible
     ctx.fillStyle = '#0008'; ctx.beginPath(); ctx.ellipse(x, y + 11, 9, 3.2, 0, 0, 7); ctx.fill();
+    if (img('player' + ((p.slot ?? 0) + 1), x, y - 3)) { nameTag(p, x, y, me); return; }
     const step = p.moving ? Math.sin(t / 60) * 1.5 : 0;
     ctx.fillStyle = '#2b2f36'; ctx.fillRect(x - 7, y + 5 + step, 5, 6); ctx.fillRect(x + 2, y + 5 - step, 5, 6); // feet
     const g = ctx.createRadialGradient(x - 3, y - 5, 1, x, y - 1, 12);
@@ -95,6 +109,9 @@ export function createRenderer(canvas) {
     }
     ctx.strokeStyle = '#1b1f24'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, y - 11); ctx.lineTo(x + 2, y - 16); ctx.stroke();
     ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x + 2, y - 17, 2.2, 0, 7); ctx.fill();
+    nameTag(p, x, y, me);
+  }
+  function nameTag(p, x, y, me) {
     ctx.font = '700 7px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 2.5; ctx.strokeStyle = '#000b';
     const tag = me ? '▼ ' + p.name : p.name;
     ctx.strokeText(tag, x, y - 21); ctx.fillStyle = me ? '#fff' : '#e0e6ee'; ctx.fillText(tag, x, y - 21);
@@ -109,6 +126,7 @@ export function createRenderer(canvas) {
     ctx.translate(CELL / 2, CELL / 2); // cell (i, j) is centred on (30i, 30j)
     // floor
     for (let i = 0; i < COLS; i++) for (let j = 0; j < ROWS; j++) {
+      if (img('floor', i * CELL, j * CELL)) continue;
       ctx.fillStyle = (i + j) % 2 ? '#1c2a33' : '#1f2f39';
       ctx.fillRect(i * CELL - 15, j * CELL - 15, CELL, CELL);
     }
@@ -116,10 +134,12 @@ export function createRenderer(canvas) {
       for (const f of v.floor) {
         const x = f.i * CELL, y = f.j * CELL;
         if (f.kind === 'fire') {
+          if (img(v.fire ? 'fireTrackLit' : 'fireTrack', x, y) || (v.fire && img('fireTrack', x, y))) continue;
           ctx.fillStyle = v.fire ? '#ff7043' : '#30201c'; ctx.fillRect(x - 15, y - 15, CELL, CELL);
           ctx.fillStyle = v.fire ? '#ffe082' : '#6d3a2a';
           for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(x - 8 + k * 8, y + (k % 2 ? 4 : -4) + (v.fire ? Math.sin(t / 50 + k) * 3 : 0), v.fire ? 3.5 : 2, 0, 7); ctx.fill(); }
         } else if (f.kind === 'tele') {
+          if (img('teleporter', x, y)) continue;
           const c = PAIR_COLORS[f.pair % 2];
           ctx.strokeStyle = c; ctx.lineWidth = 2;
           for (let k = 0; k < 3; k++) { ctx.globalAlpha = 0.35 + 0.2 * k; ctx.beginPath(); ctx.arc(x, y, 5 + k * 4 + Math.sin(t / 180 + k) * 1.2, t / 400 + k, t / 400 + k + 4.5); ctx.stroke(); }

@@ -9,8 +9,13 @@ import { acceptUpgrades } from './ws.js';
 import { FRAME_MS, TICK_HZ } from './public/shared/sim.js';
 import { Room } from './public/shared/room.js';
 
-const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC = path.join(HERE, 'public');
+// SKIN_DIR: optional folder with your own art/sound/music (see public/skin.js), served at /skin/
+const SKIN = path.resolve(process.env.SKIN_DIR || path.join(HERE, 'skin'));
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json',
+  '.png': 'image/png', '.gif': 'image/gif', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+  '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.m4a': 'audio/mp4' };
 const MAX_ROOMS = 500;
 
 export function createServer({ port = 8080, log = console.log } = {}) {
@@ -19,9 +24,11 @@ export function createServer({ port = 8080, log = console.log } = {}) {
     let p;
     try { p = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { res.writeHead(400); return res.end(); }
     if (p === '/') p = '/index.html';
-    const file = path.normalize(path.join(PUBLIC, p));
-    if (!file.startsWith(PUBLIC + path.sep)) { res.writeHead(403); return res.end(); }
+    const root = p.startsWith('/skin/') ? SKIN : PUBLIC;
+    const file = path.normalize(path.join(root, root === SKIN ? p.slice(5) : p));
+    if (!file.startsWith(root + path.sep)) { res.writeHead(403); return res.end(); }
     fs.readFile(file, (err, data) => {
+      if (err && p === '/skin/skin.json') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end('{}'); } // no skin: built-in art
       if (err) { res.writeHead(404); return res.end('not found'); }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
       res.end(data);

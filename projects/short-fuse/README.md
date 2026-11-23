@@ -12,6 +12,20 @@ and invincibility, the power-up pool and drop odds, teleporters, fire lines, the
 sudden-death spiral and the scoring. The method, tools and every recovered number are in
 [RE-NOTES.md](RE-NOTES.md). The name, art, sounds and arena layouts are original.
 
+## Music, sound and skins
+
+Short Fuse has its own chiptune soundtrack and sound effects. The header has **Music** and
+**Sound** on/off switches, and your choice is remembered.
+
+To use your own art, sound effects or music, put the files and a `skin.json` in a folder
+and point `SKIN_DIR` at it (default: `skin/` next to `server.js`). The format is described
+at the top of `public/skin.js`. Anything the skin leaves out uses the built-in art and
+sound. Skin files are not part of this repository. With Docker:
+
+```bash
+docker run -d -p 8080:8080 -v /path/to/my-skin:/app/skin:ro ghcr.io/vibatwork/short-fuse:latest
+```
+
 ## Run it
 
 Needs Node 26 (current LTS) and nothing else; there are **no npm dependencies**.
@@ -68,9 +82,14 @@ decide the match, and points break ties.
     once (your bomb appears on the next input tick, whatever your ping).
   * **Bombs and crates vanishing:** your browser knows when each bomb and burning crate
     will disappear, so you can run through the moment the server lets you.
-  * **Late inputs:** a late input is never guessed. The server waits a tick and applies
-    it, so your screen and the server don't disagree. The input buffer only drops frames
-    where you stand still.
+  * **Every input frame is applied exactly once, in order,** so your screen and the
+    server never disagree about where you are.
+  * **Late inputs** are never guessed: you stand still for that tick and the frame is
+    applied when it arrives.
+  * **Backlogs** (a computer clock running a little fast, or a burst after a lag spike)
+    are caught up by applying two frames in one tick, never by dropping any.
+  * **Speed hacking:** a client can't send more frames than real time allows, plus 3%
+    for clock drift.
   * **Measured:**
     * In real browsers through a lag proxy (50–400 ms round trip, with jitter), movement
       needed no corrections at all.

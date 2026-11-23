@@ -329,12 +329,17 @@ export class Game {
       if (!p.alive) continue;
       if (p.inv > 0) p.inv--;
       if (p.tele && ++p.teleCount === TELEPORT_COOLDOWN) { p.tele = false; p.teleCount = 0; }
-      const bits = p.bot ? botInput(this, p) : (inputs.get(p.id)?.bits ?? 0);
-      const action = !!(bits & BIT.action);
-      if (action && !p.actionHeld) this.pressAction(p);
-      else if (!action && p.actionHeld) this.releaseAction(p);
-      p.actionHeld = action;
-      movePlayer(this.grid, p, bits, (i, j, dir) => this.kick(i, j, dir));
+      // a human's input for this tick: usually one frame; two when the server is catching
+      // up on a backlog (each frame is still applied exactly as the browser predicted it)
+      const inp = inputs.get(p.id);
+      const frames = p.bot ? [{ bits: botInput(this, p) }] : inp?.frames ?? [{ bits: inp?.bits ?? 0, seq: inp?.seq }];
+      for (const { bits, seq } of frames) {
+        const action = !!(bits & BIT.action);
+        if (action && !p.actionHeld) this.pressAction(p, seq);
+        else if (!action && p.actionHeld) this.releaseAction(p);
+        p.actionHeld = action;
+        movePlayer(this.grid, p, bits, (i, j, dir) => this.kick(i, j, dir));
+      }
     }
     for (const b of [...this.bombs]) this.updateBomb(b);
     this.updateFlames(fighters);
@@ -366,10 +371,10 @@ export class Game {
   // ---------------------------------------------------------- bombs
   bombAt(i, j) { return this.bombs.find(b => b.bx === i && b.by === j && !b.moving && !b.held && !b.thrown); }
 
-  pressAction(p) {
+  pressAction(p, seq) {
     if (p.canThrow === 0) return; // already carrying a bomb
     const gx = Math.round(p.x / CELL), gy = Math.round(p.y / CELL), v = at(this.grid, gx, gy);
-    if (canLay(this.grid, p)) { this.layBomb(p, gx, gy); p.laid++; return; }
+    if (canLay(this.grid, p)) { this.layBomb(p, gx, gy, seq); p.laid++; return; }
     if (v === BOMB && p.canThrow === 1) { // pick up the bomb you're standing on
       const b = this.bombAt(gx, gy);
       if (!b || b.count >= FUSE) return;
@@ -391,11 +396,11 @@ export class Game {
     if (b) { b.held = 0; b.x = Math.round(p.x / CELL) * CELL; b.y = Math.round(p.y / CELL) * CELL; }
     p.holding = 0; if (p.canThrow === 0) p.canThrow = 1;
   }
-  layBomb(p, gx, gy) {
+  layBomb(p, gx, gy, seq = 0) {
     const b = { id: this.nextBombId++, owner: p.id, x: gx * CELL, y: gy * CELL, bx: gx, by: gy, count: 0, length: p.length, moving: 0, dir: 0, held: 0, thrown: 0, flight: 0 };
     this.bombs.push(b);
     this.grid[key(gx, gy)] = BOMB;
-    this.events.push({ type: 'lay', id: p.id, x: b.x, y: b.y });
+    this.events.push({ type: 'lay', id: p.id, x: b.x, y: b.y, seq }); // seq: the input frame that laid it (0 for bots)
   }
   kick(i, j, dir) {
     const b = this.bombAt(i, j);

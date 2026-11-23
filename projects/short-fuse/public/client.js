@@ -3,6 +3,7 @@
 import { FRAME_MS, CELL, ROWS, PredictedWorld, gridFromString } from './shared/sim.js';
 import { createRenderer } from './render.js';
 import { createAudio } from './audio.js';
+import { loadSkin } from './skin.js';
 
 // Others are drawn one update interval plus the recently measured jitter in the past.
 const INTERP_MIN = 45, INTERP_MAX = 250, INTERP_MARGIN = 8, JITTER_WINDOW = 50; // window: ~2 s at 24 updates/s
@@ -33,8 +34,14 @@ function decode(s) {
 export function startClient() {
   const $ = id => document.getElementById(id);
   const canvas = $('c'), statusEl = $('status');
-  const { draw, fx } = createRenderer(canvas);
-  const audio = createAudio();
+  const skin = {}; // optional: your own art and sound (see skin.js); loads in the background
+  const { draw, fx } = createRenderer(canvas, skin);
+  const audio = createAudio(skin);
+  loadSkin().then(s => { Object.assign(skin, s); audio.skinReady(); });
+  const toggles = () => { $('music').textContent = audio.musicOn ? '♪ Music on' : '♪ Music off'; $('sound').textContent = audio.sfx ? '🔊 Sound on' : '🔇 Sound off'; };
+  $('music').onclick = () => { audio.unlock(); audio.setMusic(!audio.musicOn); toggles(); $('c').focus?.(); };
+  $('sound').onclick = () => { audio.unlock(); audio.setSfx(!audio.sfx); toggles(); };
+  toggles();
   const params = new URLSearchParams(location.search);
   if (!params.get('room')) { params.set('room', Math.random().toString(36).slice(2, 8)); history.replaceState(null, '', '?' + params); }
   const room = params.get('room');
@@ -196,6 +203,8 @@ export function startClient() {
   function interpolated() {
     if (!snaps.length || clockOffset == null) return null;
     const rt = (performance.now() - clockOffset - interpMs) / FRAME_MS;
+    // ran past the newest update (it's late): others would freeze then jump, so widen the buffer now
+    if (rt > snaps.at(-1).tick) interpMs = Math.min(INTERP_MAX, interpMs + 1);
     let a = snaps[0], b = snaps.at(-1);
     for (let i = snaps.length - 1; i > 0; i--) if (snaps[i - 1].tick <= rt) { a = snaps[i - 1]; b = snaps[i]; break; }
     const t = b.tick > a.tick ? Math.max(0, Math.min(1, (rt - a.tick) / (b.tick - a.tick))) : 1;

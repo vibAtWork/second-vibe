@@ -59,3 +59,49 @@ test('4 players on 25-200 ms links: madness (kicks, throws, 3 bombs each) stays 
   const cs = simulate('madness', 1, 120);
   for (const c of cs) assert.ok(c.big <= 3 && c.small <= 25, `${c.lat} ms: ${c.small} small and ${c.big} big corrections in 2 minutes (the rest are other players' new bombs and where thrown bombs land)`);
 });
+
+// Real players move almost all the time, and their computers' clocks run a little fast or
+// slow. Before the catch-up fix this filled the input buffer: input lag grew by ~200 ms and
+// overflowing frames made positions snap.
+function continuous(lat, jit, skew, seconds) {
+  let s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  let now = 0; const events = []; const at = (t, fn) => events.push([t, fn]);
+  const room = new Room({ seed: 3, arena: 'madness', now: () => now });
+  const c = { pending: [], pred: null, world: null, seq: 0, up: 0, down: 0, dir: 8, corr: 0, delay: [] };
+  c.conn = { send: m => { if (m.t === 'joined') c.id = m.id; }, sendText: t => { const m = JSON.parse(t); c.down = Math.max(now + lat + (rnd() * 2 - 1) * jit, c.down); at(c.down, () => onSnap(m)); } };
+  const other = { send: () => {}, sendText: () => {} };
+  room.addConn(c.conn); room.addConn(other); room.handle(c.conn, { t: 'join', name: 'A' }); room.handle(other, { t: 'join', name: 'B' });
+  function onSnap(m) {
+    const row = m.players.find(r => r[0] === c.id), ack = m.ack[c.id] ?? 0;
+    c.delay.push(c.seq - ack); c.pending = c.pending.filter(f => f.seq > ack);
+    if (m.phase !== 'play') { c.pred = null; return; }
+    const p = { x: row[1], y: row[2], dir: row[3], speed: row[7], kick: !!row[10], laid: row[20], bombs: row[9], canThrow: row[11], actionHeld: !!row[21] };
+    c.world = new PredictedWorld(m); for (const f of c.pending) c.world.step(p, f.bits);
+    if (c.pred && (p.x !== c.pred.x || p.y !== c.pred.y)) c.corr++;
+    c.pred = p;
+  }
+  let nextServer = 0, nextClient = 5;
+  while (now < seconds * 1000) {
+    events.sort((a, b) => a[0] - b[0]);
+    const t = Math.min(nextServer, nextClient, events.length ? events[0][0] : Infinity); now = t;
+    if (events.length && events[0][0] === t) { events.shift()[1](); continue; }
+    if (nextServer === t) { for (const p of room.game.fighters()) { p.inv = 99; p.lives = 3; } room.game.elapsed = 0; room.tick(); nextServer += FRAME_MS; continue; }
+    if (rnd() < 0.04) c.dir = [1, 2, 4, 8][Math.floor(rnd() * 4)];
+    const f = { seq: ++c.seq, bits: c.dir }; c.pending.push(f);
+    c.up = Math.max(now + lat + (rnd() * 2 - 1) * jit, c.up);
+    const frames = c.pending.slice(-4).map(x => [x.seq, x.bits]);
+    at(c.up, () => room.handle(c.conn, { t: 'in', id: c.id, f: frames }));
+    if (c.pred) c.world.step(c.pred, f.bits);
+    nextClient += FRAME_MS / (1 + skew);
+  }
+  const tail = c.delay.slice(-500);
+  return { corrections: c.corr, delayMs: tail.reduce((a, b) => a + b, 0) / tail.length * FRAME_MS };
+}
+
+test('always moving, client clock 1% fast or slow: no corrections, and input lag stays at the round trip', () => {
+  for (const [lat, jit, skew] of [[60, 15, 0.01], [60, 15, -0.01], [120, 30, 0.003], [200, 50, 0.01]]) {
+    const r = continuous(lat, jit, skew, 300);
+    assert.equal(r.corrections, 0, `${lat} ms, clock ${skew * 100}%: ${r.corrections} corrections`);
+    assert.ok(r.delayMs < 2 * lat + jit + 3 * FRAME_MS, `${lat} ms, clock ${skew * 100}%: input lag ${r.delayMs.toFixed(0)} ms (round trip ${2 * lat})`);
+  }
+});
