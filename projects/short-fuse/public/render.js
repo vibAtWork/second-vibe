@@ -200,7 +200,13 @@ export function createRenderer(canvas) {
       title = v.matchWinner != null ? `${name(v.matchWinner)} wins the match!` : 'The match is a draw!';
       sub = [...v.players].filter(p => p.wins || p.points).sort((a, b) => b.wins - a.wins || b.points - a.points).map(p => `${p.name} ${'★'.repeat(p.wins)} ${p.points.toLocaleString()}`).join('   ·   ');
     }
-    if (v.banner && v.banner.until > performance.now() && !title) { title = v.banner.text; }
+    if (v.banner && v.banner.until > performance.now()) {
+      if (v.banner.small) { // a toast at the top: joins and leaves
+        ctx.font = '600 9px system-ui'; const w = ctx.measureText(v.banner.text).width + 16;
+        ctx.fillStyle = '#000b'; rr(BOARD_W / 2 - w / 2, 6, w, 16, 8); ctx.fill();
+        ctx.textAlign = 'center'; ctx.fillStyle = '#e9ecf1'; ctx.fillText(v.banner.text, BOARD_W / 2, 17);
+      } else if (!title) title = v.banner.text;
+    }
     if (!title) return;
     ctx.fillStyle = '#000a'; ctx.fillRect(0, BOARD_H / 2 - 34, BOARD_W, sub ? 62 : 46);
     ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = '800 20px system-ui';

@@ -1,6 +1,6 @@
 // Browser client: input, prediction of your own movement, interpolation of everyone
 // else, events -> effects/sounds, and the render loop.
-import { FRAME_MS, CELL, movePlayer, gridFromString } from './shared/sim.js';
+import { FRAME_MS, CELL, ROWS, PredictedWorld, gridFromString } from './shared/sim.js';
 import { createRenderer } from './render.js';
 import { createAudio } from './audio.js';
 
@@ -19,8 +19,8 @@ const lerp = (a, b, t) => a + (b - a) * t;
 
 // Snapshot rows -> objects (field order defined by Game.snapshot in shared/sim.js).
 function decode(s) {
-  const players = s.players.map(([id, x, y, dir, lives, alive, inv, speed, length, bombs, kick, canThrow, holding, name, color, wins, points, bot, fighting, slot]) =>
-    ({ id, x, y, dir, lives, alive: !!alive, inv: !!inv, speed, length, bombs, kick: !!kick, canThrow, holding: !!holding, name, color, wins, points, bot: !!bot, fighting: !!fighting, slot }));
+  const players = s.players.map(([id, x, y, dir, lives, alive, inv, speed, length, bombs, kick, canThrow, holding, name, color, wins, points, bot, fighting, slot, laid, actionHeld]) =>
+    ({ laid, actionHeld: !!actionHeld, id, x, y, dir, lives, alive: !!alive, inv: !!inv, speed, length, bombs, kick: !!kick, canThrow, holding: !!holding, name, color, wins, points, bot: !!bot, fighting: !!fighting, slot }));
   return {
     ...s, players,
     playerById: new Map(players.map(p => [p.id, p])),
@@ -62,6 +62,7 @@ export function startClient() {
   const seats = [];   // local players: { slot, id, seq, pending, pred, prev, off, lastFire, pressNext }
   const snaps = [], offsets = [];
   let lastTick = performance.now();
+  const predStats = { corrections: 0, max: 0, log: [] }; // how often the server disagreed with your predicted position
 
   const send = m => { if (ws?.readyState === 1) ws.send(JSON.stringify(m)); };
   function connect() {
@@ -80,7 +81,7 @@ export function startClient() {
     if (seats.some(s => s.slot === slot)) return;
     const base = $('name').value.trim() || 'Bomber';
     try { localStorage.setItem('sf-name', base); } catch { /* private mode */ }
-    seats.push({ slot, id: null, seq: 0, pending: [], pred: null, prev: null, off: { x: 0, y: 0 }, lastFire: false, pressNext: false });
+    seats.push({ slot, id: null, seq: 0, pending: [], pred: null, prev: null, off: { x: 0, y: 0 }, lastFire: false, pressNext: false, world: null, ghosts: [], played: new Set() });
     send({ t: 'join', name: slot === 'p1' ? base : `${base} 2`, slot });
     audio.unlock();
     updateButtons();
@@ -102,6 +103,7 @@ export function startClient() {
   }
 
   function onSnapshot(s) {
+    if (latest && s.tick <= latest.tick) return; // never step back in time (WebSocket keeps order; this is insurance)
     const now = performance.now();
     if (!latest || latest.arena !== s.arena) $('arena').value = s.arena; // the header shows what the room actually plays
     if (snaps.length) snapGap = Math.max(1, Math.min(10, s.tick - snaps.at(-1).tick)) * FRAME_MS;
@@ -118,11 +120,16 @@ export function startClient() {
     for (const seat of seats) {
       const p = seat.id != null && s.playerById.get(seat.id);
       if (!p || !p.fighting || !p.alive) { seat.pred = seat.prev = null; continue; }
-      seat.pending = seat.pending.filter(f => f.seq > (s.ack[seat.id] ?? 0));
-      const pred = { x: p.x, y: p.y, dir: p.dir, speed: p.speed, kick: false };
-      if (s.phase === 'play') for (const f of seat.pending) movePlayer(s.gridArr, pred, f.bits);
+      const ack = s.ack[seat.id] ?? 0;
+      seat.pending = seat.pending.filter(f => f.seq > ack);
+      for (const q of seat.played) if (q <= ack) seat.played.delete(q); // the server has reported those frames' bombs
+      // replay the unacknowledged inputs on the server's state: movement and your own bombs
+      const pred = { x: p.x, y: p.y, dir: p.dir, speed: p.speed, kick: p.kick, laid: p.laid, bombs: p.bombs, canThrow: p.canThrow, actionHeld: p.actionHeld };
+      seat.world = new PredictedWorld(s); seat.ghosts = [];
+      if (s.phase === 'play') for (const f of seat.pending) { const c = seat.world.step(pred, f.bits); if (c) seat.ghosts.push(c); }
       if (seat.pred) {
         const dx = pred.x - seat.pred.x, dy = pred.y - seat.pred.y;
+        if (dx || dy) { predStats.corrections++; predStats.max = Math.max(predStats.max, Math.abs(dx) + Math.abs(dy)); if (predStats.log.length < 30) predStats.log.push({ ack: s.ack[seat.id], tick: s.tick, srv: [p.x, p.y], old: [seat.pred.x, seat.pred.y], now: [pred.x, pred.y], pending: seat.pending.map(f => f.seq + ':' + f.bits).join(' ') }); }
         if (Math.abs(dx) + Math.abs(dy) > SNAP_DIST) { seat.off = { x: 0, y: 0 }; seat.prev = null; }
         else { seat.off.x -= dx; seat.off.y -= dy; if (seat.prev) { seat.prev.x += dx; seat.prev.y += dy; } }
       }
@@ -134,7 +141,7 @@ export function startClient() {
   function onEvent(ev, s) {
     const mine = seats.some(x => x.id === ev.id);
     switch (ev.type) {
-      case 'lay': audio.lay(); break;
+      case 'lay': if (!(ev.seq && seats.some(x => x.id === ev.id && x.played.has(ev.seq)))) audio.lay(); break; // own bombs already sounded
       case 'boom': fx.boom(ev.x, ev.y); audio.boom(); break;
       case 'crate': fx.crate(ev.x, ev.y); audio.crate(); break;
       case 'hit': { const p = s.playerById.get(ev.id); if (p) fx.text(p.x, p.y, ev.lives > 0 ? `-1 ♥` : 'OUT!', '#ff8a80'); audio.hit(); break; }
@@ -147,6 +154,8 @@ export function startClient() {
       case 'fire': audio.fire(); break;
       case 'fill': fx.fill(ev.i, ev.j); audio.fill(); break;
       case 'heat': audio.heat(); break;
+      case 'join': if (ev.id > 0 && s.phase !== 'waiting') banner = { text: `${ev.name} joined - plays from the next heat`, until: performance.now() + 2000, small: true }; break;
+      case 'leave': if (ev.id > 0) banner = { text: `${ev.name} left`, until: performance.now() + 2500, small: true }; break;
       case 'result': if (ev.winner != null) audio.win(); break;
       case 'match': banner = { text: ev.winner != null ? `${nameOf(s, ev.winner)} wins the match!` : 'Match drawn', until: performance.now() + 4000 }; break;
     }
@@ -168,7 +177,11 @@ export function startClient() {
       seat.pending.push({ seq, bits, wire: [seq, bits] });
       if (seat.pending.length > 120) seat.pending.shift();
       send({ t: 'in', id: seat.id, f: seat.pending.slice(-SEND_REDUNDANCY).map(f => f.wire) });
-      if (seat.pred && latest?.phase === 'play') { seat.prev = { x: seat.pred.x, y: seat.pred.y }; movePlayer(latest.gridArr, seat.pred, bits); }
+      if (seat.pred && latest?.phase === 'play') {
+        seat.prev = { x: seat.pred.x, y: seat.pred.y };
+        const c = seat.world.step(seat.pred, bits);
+        if (c) { seat.ghosts.push(c); seat.played.add(seq); audio.lay(); } // your bomb appears (and sounds) at once
+      }
     }
     tapped.clear(); released.clear();
   }
@@ -207,6 +220,8 @@ export function startClient() {
     });
     // a carried bomb follows its (possibly predicted) carrier
     const bombs = (it?.bombs || latest?.bombs || []).filter(b => b.state !== 3);
+    // your own bombs the server hasn't confirmed yet
+    for (const seat of seats) for (const [i, j] of seat.ghosts || []) if (latest && latest.gridArr[i * ROWS + j] !== 3) bombs.push({ id: `ghost${i},${j}`, x: i * CELL, y: j * CELL, count: 0, state: 0 });
     draw({
       grid: latest?.gridArr, floor: arena?.floor || [], fire: latest?.fire, burning: latest?.burning || [], pickups: latest?.pickups || [],
       flames: latest?.flames || [], bombs, players, phase: latest?.phase, timer: latest?.timer, heat: latest?.heat || 0, arena: latest?.arena,
@@ -217,5 +232,5 @@ export function startClient() {
   updateButtons();
   connect();
   frame();
-  window.__sf = { seats, get latest() { return latest; }, get interpMs() { return interpMs; } }; // for automated tests
+  window.__sf = { seats, get latest() { return latest; }, get interpMs() { return interpMs; }, predStats }; // for automated tests
 }

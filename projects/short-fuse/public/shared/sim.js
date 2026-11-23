@@ -115,6 +115,54 @@ export function movePlayer(g, p, bits, onKick) {
   }
 }
 
+// Can this player lay a bomb right now? (Shared by the server and the browser's prediction.)
+export function canLay(g, p) {
+  return p.canThrow !== 0 && !(at(g, Math.round(p.x / CELL), Math.round(p.y / CELL)) > 0) && p.laid < p.bombs;
+}
+
+// The browser's prediction of one of its own ticks, in the server's order: the bomb button
+// (laying, picking up, letting go), then movement (kicking a bomb clears its cell).
+// p: { x, y, dir, speed, kick, laid, bombs, canThrow, actionHeld }; g is the predicted grid.
+// Where a thrown or kicked bomb ends up is left to the server. Returns the cell [i, j] of a
+// bomb laid this tick, or null.
+export function predictTick(g, p, bits) {
+  const action = !!(bits & 16);
+  let laid = null;
+  if (action && !p.actionHeld) {
+    const i = Math.round(p.x / CELL), j = Math.round(p.y / CELL);
+    if (canLay(g, p)) { laid = [i, j]; g[key(i, j)] = BOMB; p.laid++; }
+    else if (at(g, i, j) === BOMB && p.canThrow === 1) { p.canThrow = 0; g[key(i, j)] = OPEN; } // picked up
+  } else if (!action && p.actionHeld && p.canThrow === 0) p.canThrow = 1; // thrown
+  p.actionHeld = action;
+  movePlayer(g, p, bits, (i, j) => { g[key(i, j)] = OPEN; }); // kicked away
+  return laid;
+}
+
+// The world as the browser predicts it for its own inputs. An update describes the end of
+// server tick T; the first input not yet applied runs at T+1, the next at T+2, and so on.
+// Bombs and burning crates vanish at known ticks (a still bomb at fuse count c is gone after
+// tick T + 85 - c; a crate burning for n ticks after T + 25 - n), so the predicted grid
+// clears them on time - you can walk through the moment the server will let you.
+export class PredictedWorld {
+  constructor(snap) {
+    this.grid = gridFromString(snap.grid);
+    this.clears = []; // [after this many ticks, cell]
+    for (const [, x, y, count, state] of snap.bombs) if (state === 0 && count < FUSE + FLAME_TICKS) this.clears.push([FUSE + FLAME_TICKS - count, key(Math.round(x / CELL), Math.round(y / CELL))]);
+    for (const [k, n] of snap.burning) this.clears.push([FLAME_TICKS - n, k]);
+    this.ticks = 0;
+  }
+  // predict the next input tick: clear what has gone by then, then run the player's tick
+  step(p, bits) {
+    this.ticks++;
+    this.clears = this.clears.filter(([after, k]) => { // each clear happens once
+      if (after >= this.ticks) return true;
+      if (this.grid[k] !== WALL) this.grid[k] = OPEN;
+      return false;
+    });
+    return predictTick(this.grid, p, bits);
+  }
+}
+
 const DIRS = { 1: [0, -1], 2: [0, 1], 3: [-1, 0], 4: [1, 0] };
 // Does a box [xmin, xmax, ymin, ymax] centred at (x, y) overlap a player's hit marker?
 const touches = (box, x, y, p) => p.x + HIT.dot > x + box[0] && p.x - HIT.dot < x + box[1] && p.y + HIT.dot > y + box[2] && p.y - HIT.dot < y + box[3];
@@ -190,6 +238,7 @@ export class Game {
     if (!p) return;
     if (p.fighting && p.alive) this.dropHeld(p);
     this.players.delete(id);
+    this.events.push({ type: 'leave', id, name: p.name, fighting: p.fighting && p.alive });
     for (const b of this.bombs) if (b.owner === id) b.owner = 0;
   }
   humans() { return [...this.players.values()].filter(p => !p.bot); }
@@ -230,7 +279,9 @@ export class Game {
     this.nextBombId = 1; this.resetClock(); this.winner = null;
     for (const p of this.players.values()) { p.fighting = false; p.alive = false; }
     fighters.forEach((p, n) => {
-      const [cx, cy] = CORNERS[n];
+      // start corners rotate each heat (the crate layout isn't symmetric); with two players
+      // that means swapping diagonal corners
+      const [cx, cy] = CORNERS[(n + this.heat - 1) % fighters.length];
       Object.assign(p, {
         fighting: true, slot: n, alive: true, x: cx * CELL, y: cy * CELL, dir: 2, lives: LIVES, inv: 0,
         speed: a.speed ?? 2, length: a.length ?? 2, bombs: a.bombs ?? 1, laid: 0, kick: !!a.kick, canThrow: a.throw ? 1 : -1,
@@ -318,7 +369,7 @@ export class Game {
   pressAction(p) {
     if (p.canThrow === 0) return; // already carrying a bomb
     const gx = Math.round(p.x / CELL), gy = Math.round(p.y / CELL), v = at(this.grid, gx, gy);
-    if (!(v > 0) && p.laid < p.bombs) { this.layBomb(p, gx, gy); p.laid++; return; }
+    if (canLay(this.grid, p)) { this.layBomb(p, gx, gy); p.laid++; return; }
     if (v === BOMB && p.canThrow === 1) { // pick up the bomb you're standing on
       const b = this.bombAt(gx, gy);
       if (!b || b.count >= FUSE) return;
@@ -433,9 +484,11 @@ export class Game {
     for (const f of this.flames) {
       if (this.floor.some(t => t.kind === 'fire' && t.i === f.i && t.j === f.j)) this.fireOn = 1;
       const box = f.dir <= 2 ? HIT.armV : HIT.armH;
-      for (const p of fighters) {
-        if (!p.alive || !touches(box, f.x, f.y, p) || f.spent) continue;
-        f.spent = true; this.hit(p);
+      if (!f.spent) {
+        // An arm is used up by the first hit (as in the original), but everyone it touches on
+        // that tick is hit - the original picked the lowest player number, unfair online.
+        const caught = fighters.filter(p => p.alive && touches(box, f.x, f.y, p));
+        if (caught.length) { f.spent = true; for (const p of caught) this.hit(p); }
       }
       f.life--;
     }
@@ -520,7 +573,7 @@ export class Game {
       t: 's', tick: this.tick, phase: this.phase, timer: this.timer, heat: this.heat, heats: HEATS, arena: this.arenaType,
       clock: this.secondsLeft(), winner: this.winner, matchWinner: this.matchWinner, fire: this.fireOn, layout: this.layoutId,
       grid: gridToString(this.grid),
-      players: [...this.players.values()].map(p => [p.id, p.x, p.y, p.dir, p.lives, p.alive ? 1 : 0, p.inv > 0 ? 1 : 0, p.speed ?? 2, p.length ?? 2, p.bombs ?? 1, p.kick ? 1 : 0, p.canThrow ?? -1, p.holding ? 1 : 0, p.name, p.color, p.wins, p.points, p.bot ? 1 : 0, p.fighting ? 1 : 0, p.slot]),
+      players: [...this.players.values()].map(p => [p.id, p.x, p.y, p.dir, p.lives, p.alive ? 1 : 0, p.inv > 0 ? 1 : 0, p.speed ?? 2, p.length ?? 2, p.bombs ?? 1, p.kick ? 1 : 0, p.canThrow ?? -1, p.holding ? 1 : 0, p.name, p.color, p.wins, p.points, p.bot ? 1 : 0, p.fighting ? 1 : 0, p.slot, p.laid ?? 0, p.actionHeld ? 1 : 0]),
       bombs: this.bombs.map(b => [b.id, b.x, b.y, b.count, b.held ? 3 : b.thrown ? 2 : b.moving ? 1 : 0]),
       flames: this.flames.map(f => [f.x, f.y, f.dir, f.end ? 1 : 0, f.life]),
       burning: [...this.burning], // [cell, ticks burned]

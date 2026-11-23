@@ -61,10 +61,29 @@ decide the match, and points break ties.
   `Room` per invite link at 24 ticks/s, the original's frame rate. An update goes out
   every tick, about 1–2 KB (25–45 KB/s per player).
 * `public/shared/sim.js` holds the whole game, in the original's units (30 per cell).
-  The browser runs the same `movePlayer()` to predict your own movement. Controls react
-  instantly and match the server exactly, smoothed between ticks.
-* Others are drawn one update plus the measured jitter in the past. The server's input
-  queue trims itself back to jitter size, and TCP_NODELAY is on.
+* **Online PvP netcode:**
+  * **Movement:** your browser runs the server's own code for your movement. Your robot
+    reacts instantly and is smoothed between ticks.
+  * **Your bombs:** laying, picking up, throwing and kicking happen on your screen at
+    once (your bomb appears on the next input tick, whatever your ping).
+  * **Bombs and crates vanishing:** your browser knows when each bomb and burning crate
+    will disappear, so you can run through the moment the server lets you.
+  * **Late inputs:** a late input is never guessed. The server waits a tick and applies
+    it, so your screen and the server don't disagree. The input buffer only drops frames
+    where you stand still.
+  * **Measured:**
+    * In real browsers through a lag proxy (50–400 ms round trip, with jitter), movement
+      needed no corrections at all.
+    * In a 4-player simulation on 25–200 ms links, classic needed at most 1–3 small
+      corrections per 2 minutes.
+    * The rest comes from things nobody can predict, such as an opponent's bomb landing
+      in your path.
+  * **Other players** are drawn one update plus the measured jitter in the past.
+    TCP_NODELAY is on.
+* **Fairness:**
+  * Start corners rotate every heat.
+  * A flame hits everyone standing in it at once, so no player number is favoured.
+  * A player who leaves is announced, and duplicate names get a number.
 * **Cheating:** the server runs the game and clients only send buttons.
   * Every message is validated.
   * One input is applied per tick, so sending faster gains nothing.
@@ -78,9 +97,10 @@ decide the match, and points break ties.
 ## Tests
 
 ```bash
-npm test          # 24 tests: recovered tables, arena generator, movement + corner assist, bombs, chains, kick, throw, hits, pickups, teleporters, fire lines, sudden death, heats, bots, room, network prediction
+npm test          # 31 tests (incl. prediction vs. server under network delay, 4-player lag simulation): recovered tables, arena generator, movement + corner assist, bombs, chains, kick, throw, hits, pickups, teleporters, fire lines, sudden death, heats, bots, room, network prediction
 npm run e2e       # headless Chromium: two players, prediction, bombs seen by both, local second player, bots
 npm run playtest  # bots and button-mashers in 16 scenarios with invariants checked every tick
+npm run pvp -- 60 # two browsers through a lag proxy (60 ms each way + jitter): prediction, instant bombs, fair dodging, kills, heat end
 ```
 
 ## Limitations

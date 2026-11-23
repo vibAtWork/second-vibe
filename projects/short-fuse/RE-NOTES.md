@@ -128,6 +128,11 @@ without (both divided by the aggression factor).
     The layer never got it back, and the thrower could gain bombs.
 * **Fire lines** can hit each tile once per burn; the original's flag was never reset,
   so each tile could hit only once per round.
+* **Flame arms in multiplayer:** an arm is still used up by its first hit, as in the
+  original, but it hits *everyone* in it on that tick. The original hit only the
+  lowest-numbered player, which would favour some players online.
+* **Start corners** rotate each heat. The original's corners were fixed per player, and
+  the random crate removal isn't symmetric.
 * **Chain timing:** chained bombs always go off on the next tick. In the original that
   depended on the clips' processing order.
 * **Sudden-death walls** crush pickups and bombs under them. The original just

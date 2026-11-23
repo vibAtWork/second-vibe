@@ -146,14 +146,19 @@ test('hits: lose a life, 75 ticks of invincibility (blinking), out at 0 lives', 
   step(g); assert.equal(g.phase, 'result'); assert.equal(g.winner, 2);
 });
 
-test('hits: a flame arm hits one player once; hit boxes match the original clip sizes', () => {
+test('hits: a flame arm is used up by its first hit, but hits everyone in it on that tick (fair to all slots); hit boxes match the clip sizes', () => {
   const [g, a, b] = duel(); plain(g);
-  g.addPlayer(3, 'C', '#fff');
   Object.assign(a, { x: 30, y: 90 }); Object.assign(b, { x: 30, y: 90 }); // both in the same cell below the bomb
   g.layBomb(b, 1, 1); g.bombs[0].count = FUSE - 1;
-  // move b's bomb out of the way of the centre box
   step(g);
-  assert.equal(a.lives + b.lives, 2 * LIVES - 1, 'the arm hit only one of the two players in it');
+  assert.deepEqual([a.lives, b.lives], [LIVES - 1, LIVES - 1], 'both players in the arm are hit, whatever their slot');
+  const [g3, c3, d3] = duel(); plain(g3);
+  Object.assign(c3, { x: 30, y: 90 }); Object.assign(d3, { x: 90, y: 90 });
+  g3.layBomb(d3, 1, 1); g3.bombs[0].count = FUSE - 1;
+  step(g3);
+  assert.equal(c3.lives, LIVES - 1);
+  Object.assign(d3, { x: 30, y: 90, inv: 0 }); step(g3);
+  assert.equal(d3.lives, LIVES, 'walking into a used-up arm later does not hurt (the original rule)');
   // box sizes: a vertical arm reaches 18 + 7.65 along and 6.4 + 7.65 across
   const [g2, c, d] = duel(); plain(g2);
   Object.assign(d, { x: 390, y: 330 });
@@ -349,7 +354,7 @@ test('snapshot carries what the client draws; rng is deterministic', () => {
   const [g] = duel('classic');
   const s = g.snapshot();
   assert.equal(s.grid.length, COLS * ROWS);
-  assert.equal(s.players[0].length, 20);
+  assert.equal(s.players[0].length, 22);
   assert.ok(JSON.stringify(s).length < 3000);
   const r1 = rng(5), r2 = rng(5); assert.equal(r1(), r2());
 });

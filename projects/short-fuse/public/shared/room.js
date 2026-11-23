@@ -7,7 +7,7 @@ import { Game, TICK_HZ } from './sim.js';
 const COLORS = ['#4fc3f7', '#ffd54f', '#ef5350', '#e0e0e0'];
 export const MAX_PLAYERS = 4;
 export const MAX_SEATS_PER_CONN = 2;           // a second player on the same keyboard
-export const MAX_QUEUE = 4;
+export const MAX_QUEUE = 6;                    // more queued than this is dropped (sending faster gains nothing)
 export const STARVE_TICKS = Math.round(TICK_HZ * 1.5); // 1.5 s without input -> idle
 export const TRIM_WINDOW = TICK_HZ;             // check every second whether a seat's input buffer can shrink
 const RATE = { capacity: 100, perSec: 60, kickAfterDrops: 600 };
@@ -90,11 +90,15 @@ export class Room {
     const id = this.nextId++;
     const used = new Set(this.game.humans().map(p => p.color));
     const color = COLORS.find(c => !used.has(c)) || COLORS[id % COLORS.length];
-    this.seats.set(id, { id, conn, queue: [], last: IDLE, lastSeq: 0, starved: 0, minQ: Infinity, window: 0, button: 0 }); // button: the bomb-button state the game last saw
+    this.seats.set(id, { id, conn, queue: [], last: IDLE, lastSeq: 0, starved: 0, minQ: Infinity, window: 0, button: 0, trim: false, stats: { overflow: 0, trimmed: 0, late: 0 } }); // button: the bomb-button state the game last saw
     conn.seatIds.push(id);
-    this.game.addPlayer(id, cleanName(msg.name), color);
+    // two players with the same name get a number, so everyone can tell who's who
+    const taken = new Set([...this.game.players.values()].map(p => p.name));
+    let name = cleanName(msg.name);
+    for (let n = 2; taken.has(name); n++) name = `${cleanName(msg.name).slice(0, 13)} ${n}`;
+    this.game.addPlayer(id, name, color);
     conn.send({ t: 'joined', id, slot: msg.slot === 'p2' ? 'p2' : 'p1' });
-    this.log(`${cleanName(msg.name)} joined (#${id})`);
+    this.log(`${name} joined (#${id})`);
   }
 
   // {t:'in', id, f:[[seq, bits], ...]} - recent frames are re-sent for loss tolerance
@@ -106,26 +110,37 @@ export class Room {
       const newest = seat.queue.length ? seat.queue.at(-1).seq : seat.lastSeq;
       if (f && f.seq > newest) seat.queue.push(f);
     }
-    while (seat.queue.length > MAX_QUEUE) dropOldest(seat); // too far ahead: sending faster gains nothing
+    while (seat.queue.length > MAX_QUEUE) { dropOldest(seat); seat.stats.overflow++; } // too far ahead: sending faster gains nothing
   }
 
   tick() {
-    const g = this.game, inputs = new Map();
+    const g = this.game, inputs = new Map(), applied = new Map(); // seat id -> seq of the frame used this tick
     for (const seat of this.seats.values()) {
       // The queue is only a jitter buffer: if it never ran low during the last second,
       // it holds more than jitter needs, and every extra frame is a tick of input delay.
+      // Only idle frames (no movement, bomb button unchanged) are trimmed: dropping one is
+      // invisible to your prediction, so trimming never makes your screen jump.
       seat.minQ = Math.min(seat.minQ, seat.queue.length);
-      if (++seat.window >= TRIM_WINDOW) { if (seat.minQ >= 2) dropOldest(seat); seat.minQ = Infinity; seat.window = 0; }
+      if (++seat.window >= TRIM_WINDOW) { if (seat.minQ >= 2) seat.trim = true; seat.minQ = Infinity; seat.window = 0; }
+      if (seat.trim && seat.queue.length >= 2) {
+        const head = seat.queue[0];
+        if (!(head.bits & 15) && (head.bits & 16) === seat.button) { dropOldest(seat); seat.trim = false; seat.stats.trimmed++; }
+      } else if (seat.queue.length < 2) seat.trim = false;
       const next = seat.queue.shift();
-      if (next) { seat.last = next; seat.lastSeq = next.seq; seat.starved = 0; } else seat.starved++;
-      // held buttons repeat through short network hiccups, then the seat goes idle
-      const input = seat.starved > STARVE_TICKS ? IDLE : next || seat.last;
+      if (next) { seat.last = next; seat.lastSeq = next.seq; seat.starved = 0; applied.set(seat.id, next.seq); } else { seat.starved++; seat.stats.late++; }
+      // A late frame: don't guess. Stand still this tick (bomb button unchanged) and apply the
+      // frame when it arrives - your screen and the server never disagree, and the buffer
+      // grows to absorb the jitter. After 1.5 s without input the seat goes idle.
+      const input = next || (seat.starved > STARVE_TICKS ? IDLE : { bits: seat.button });
       inputs.set(seat.id, input); seat.button = input.bits & 16;
     }
     g.step(inputs);
     if (g.layoutId !== this.layout) { this.layout = g.layoutId; const m = g.arenaMsg(); for (const c of this.conns) c.send(m); }
     const snap = g.snapshot();
     snap.ev = g.drainEvents();
+    // tag each bomb laid with the input frame that laid it, so the layer's browser (which
+    // shows its own bombs at once) can skip the ones it already showed; 0 = no fresh frame
+    for (const ev of snap.ev) if (ev.type === 'lay' && this.seats.has(ev.id)) ev.seq = applied.get(ev.id) ?? 0;
     let body = null; // the snapshot is the same for everyone: stringify it once, prepend each connection's ack
     for (const c of this.conns) {
       const ack = {};
